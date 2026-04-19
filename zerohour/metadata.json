@@ -1,0 +1,6 @@
+{
+  "name": "ZeroHour",
+  "description": "ZeroHour: A voice-driven rapid volunteer coordination platform for localized crisis response. Utilizes Gemini AI to parse real-time volunteer availability and match them with urgent NGO requests.",
+  "requestFramePermissions": ["microphone", "geolocation"],
+  "majorCapabilities": ["AI-powered parsing", "Voice input", "Real-time coordination"]
+}
