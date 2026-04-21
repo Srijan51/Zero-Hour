@@ -1,6 +1,6 @@
 # Zero Hour
 
-Zero Hour (formerly Micro-Match) is a voice-driven volunteer dispatch PWA built for the Google Solution Challenge 2026.
+Zero Hour is a voice-driven volunteer dispatch PWA built for the Google Solution Challenge 2026.
 
 ## Architecture
 
