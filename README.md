@@ -1,20 +1,42 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Zero Hour
 
-# Run and deploy your AI Studio app
+Zero Hour (formerly Micro-Match) is a voice-driven volunteer dispatch PWA built for the Google Solution Challenge 2026.
 
-This contains everything you need to run your app locally.
+## Architecture
 
-View your app in AI Studio: https://ai.studio/apps/4efc2387-5645-4989-bc80-402a4921d6b9
+```text
+[Volunteer] --- (Voice web API) ---> [ React PWA ] <--- (FCM Notifications) --- [NGO Dashboard]
+                                         |
+                                         v
+                                [ FastAPI Backend ] 
+                                 /               \
+                  (Audio / Text) v               v (DB calls)
+                    [ Gemini 1.5 Flash ]   [ PostgreSQL / SQLite ]
+```
 
-## Run Locally
+## Setup
 
-**Prerequisites:**  Node.js
+1. **Environment Variables**:
+   Copy `.env.example` to `.env` and fill in the values.
+   (The backend supports a MOCK MODE if API keys are not provided!)
 
+2. **Backend**:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   python -m app.seed   # Generate mock NGO requests
+   uvicorn app.main:app --reload
+   ```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+3. **Frontend**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+## Demo Flow
+1. Load Frontend. Accept Mic Permissions.
+2. Speak: "I have a 4x4 vehicle and basic first aid."
+3. Backend processes data using Gemini (or Mock Mode).
+4. See matched NGO requests visually on the map!
