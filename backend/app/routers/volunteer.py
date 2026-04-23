@@ -27,6 +27,9 @@ async def process_voice_dispatch(
 
     profile_data = parse_volunteer_speech(transcript)
     
+    # Remove 'location' from profile_data as it is not a valid Volunteer column
+    profile_data.pop('location', None)
+    
     if lat and lng:
         profile_data['lat'] = lat
         profile_data['lng'] = lng

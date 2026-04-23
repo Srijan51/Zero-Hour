@@ -1,12 +1,12 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+client = None
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
 def parse_volunteer_speech(transcript: str) -> dict:
     if not GEMINI_API_KEY:
@@ -34,7 +34,10 @@ If a field is not mentioned, use null or empty array. Never return anything outs
 Speech: "{transcript}"
 """
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt,
+        )
         # Strip markdown if present
         text = response.text.strip()
         if text.startswith("```json"):

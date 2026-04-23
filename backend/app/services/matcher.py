@@ -16,6 +16,20 @@ def haversine(lat1, lon1, lat2, lon2):
     distance = R * c
     return distance
 
+def fuzzy_match_score(vol_list, req_list):
+    if not req_list:
+        return 40 if vol_list else 0
+    if not vol_list:
+        return 0
+    
+    matches = 0
+    for req in req_list:
+        req_lower = req.lower()
+        if any(req_lower in v.lower() or v.lower() in req_lower for v in vol_list):
+            matches += 1
+            
+    return (matches / len(req_list)) * 40
+
 def compute_score(volunteer, request):
     # Proximity score (0 to 20)
     vol_lat, vol_lng = volunteer.lat or 22.5726, volunteer.lng or 88.3639 # Default Kolkata roughly
@@ -23,20 +37,10 @@ def compute_score(volunteer, request):
     proximity_score = max(0, 20 - distance * 2)
     
     # Skills score
-    vol_skills = set([s.lower() for s in volunteer.skills])
-    req_skills = set([s.lower() for s in request.required_skills])
-    if req_skills:
-        skill_score = (len(vol_skills.intersection(req_skills)) / len(req_skills)) * 40
-    else:
-        skill_score = 40 if vol_skills else 0
+    skill_score = fuzzy_match_score(volunteer.skills, request.required_skills)
         
     # Assets score
-    vol_assets = set([a.lower() for a in volunteer.assets])
-    req_assets = set([a.lower() for a in request.required_assets])
-    if req_assets:
-        asset_score = (len(vol_assets.intersection(req_assets)) / len(req_assets)) * 40
-    else:
-        asset_score = 40 if vol_assets else 0
+    asset_score = fuzzy_match_score(volunteer.assets, request.required_assets)
         
     return proximity_score + skill_score + asset_score
 

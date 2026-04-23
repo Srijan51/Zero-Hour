@@ -7,7 +7,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#1a73e8',
+        primary: {
+          DEFAULT: '#4F46E5',
+          hover: '#4338CA',
+          light: '#E0E7FF',
+        },
+        secondary: '#0EA5E9',
+      },
+      fontFamily: {
+        sans: ['Outfit', 'sans-serif'],
       }
     },
   },

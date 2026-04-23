@@ -3,5 +3,5 @@ uvicorn
 sqlalchemy
 pydantic
 pydantic-settings
-google-generativeai
+google-genai
 python-multipart
