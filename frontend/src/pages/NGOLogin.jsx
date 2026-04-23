@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Plus, Clock, MapPin, AlertTriangle, CheckCircle2, Radio, ChevronDown } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Shield, Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Lock } from 'lucide-react';
 import api from '../services/api';
 
 const URGENCY_LABELS = {
@@ -11,8 +12,13 @@ const URGENCY_LABELS = {
 };
 
 export default function NGOLogin() {
+  const [credentials, setCredentials] = useState({ ngo_name: '', password: '' });
+  const [token, setToken] = useState(localStorage.getItem('ngoAuthToken') || '');
+  const [authenticatedNgo, setAuthenticatedNgo] = useState(localStorage.getItem('ngoName') || '');
+  const [authStatus, setAuthStatus] = useState('');
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
   const [formData, setFormData] = useState({
-    ngo_name: '',
     task_description: '',
     required_skills: '',
     required_assets: '',
@@ -25,6 +31,8 @@ export default function NGOLogin() {
   const [requests, setRequests] = useState([]);
   const [showForm, setShowForm] = useState(false);
 
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
   const fetchRequests = async () => {
     try {
       const res = await api.get('/ngo/requests');
@@ -35,10 +43,68 @@ export default function NGOLogin() {
   };
 
   useEffect(() => {
+    const verifyAuth = async () => {
+      if (!token) {
+        setCheckingAuth(false);
+        return;
+      }
+
+      try {
+        const res = await api.get('/ngo/me', { headers: authHeaders });
+        setAuthenticatedNgo(res.data.ngo_name);
+      } catch (e) {
+        localStorage.removeItem('ngoAuthToken');
+        localStorage.removeItem('ngoName');
+        setToken('');
+        setAuthenticatedNgo('');
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+
+    verifyAuth();
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      setRequests([]);
+      return;
+    }
+
     fetchRequests();
     const interval = setInterval(fetchRequests, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthStatus('Authenticating...');
+
+    try {
+      const res = await api.post('/ngo/login', credentials);
+      const authToken = res.data.token;
+      const ngoName = res.data.ngo_name;
+
+      localStorage.setItem('ngoAuthToken', authToken);
+      localStorage.setItem('ngoName', ngoName);
+      setToken(authToken);
+      setAuthenticatedNgo(ngoName);
+      setCredentials({ ngo_name: '', password: '' });
+      setAuthStatus('');
+    } catch (error) {
+      setAuthStatus('Invalid NGO credentials. Access denied.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('ngoAuthToken');
+    localStorage.removeItem('ngoName');
+    setToken('');
+    setAuthenticatedNgo('');
+    setShowForm(false);
+    setStatus('');
+    setRequests([]);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -49,19 +115,90 @@ export default function NGOLogin() {
         required_skills: formData.required_skills.split(',').map(s => s.trim()).filter(Boolean),
         required_assets: formData.required_assets.split(',').map(s => s.trim()).filter(Boolean),
       };
-      await api.post('/ngo/requests', payload);
+      await api.post('/ngo/requests', payload, { headers: authHeaders });
       setStatus('Task Posted successfully!');
-      setFormData({...formData, task_description: '', required_skills: '', required_assets: ''});
+      setFormData({ ...formData, task_description: '', required_skills: '', required_assets: '' });
       setShowForm(false);
       fetchRequests();
       setTimeout(() => setStatus(''), 3000);
     } catch (error) {
-      setStatus('Failed to post task.');
+      setStatus(error?.response?.status === 401 ? 'Session expired. Please login again.' : 'Failed to post task.');
     }
   };
 
   const openCount = requests.filter(r => r.status === 'open').length;
   const matchedCount = requests.filter(r => r.status === 'matched').length;
+
+  if (checkingAuth) {
+    return (
+      <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white flex items-center justify-center px-4 pb-16 md:pb-0">
+        <div className="text-sm text-slate-500 font-medium">Checking authentication...</div>
+      </div>
+    );
+  }
+
+  if (!token || !authenticatedNgo) {
+    return (
+      <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar flex flex-col items-center justify-center px-4 pb-16 md:pb-0">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-6 slide-up">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/30">
+              <Lock className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">NGO Command Login</h1>
+              <p className="text-slate-500 text-xs font-medium">Authenticate to access broadcast controls</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-3">
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">NGO Name</label>
+              <input
+                required
+                type="text"
+                className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                value={credentials.ngo_name}
+                onChange={e => setCredentials({ ...credentials, ngo_name: e.target.value })}
+                placeholder="e.g. Red Cross Kolkata"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Password</label>
+              <input
+                required
+                type="password"
+                className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                value={credentials.password}
+                onChange={e => setCredentials({ ...credentials, password: e.target.value })}
+                placeholder="Enter NGO password"
+              />
+            </div>
+
+            <button type="submit" className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary text-white font-bold rounded-xl shadow-md transition-all active:scale-95">
+              Authenticate
+            </button>
+          </form>
+
+          {authStatus && (
+            <div className="mt-3 text-center text-xs font-semibold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-100">
+              {authStatus}
+            </div>
+          )}
+
+          <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+            <Link to="/register" className="font-semibold text-primary hover:text-primary/80 transition-colors">
+              Register NGO
+            </Link>
+            <Link to="/admin" className="font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+              Admin Access
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar flex flex-col pb-16 md:pb-0">
@@ -78,9 +215,18 @@ export default function NGOLogin() {
               </div>
               <div>
                 <h1 className="text-xl font-extrabold text-white tracking-tight">NGO Command</h1>
-                <p className="text-slate-400 text-xs font-medium">Crisis management dashboard</p>
+                <p className="text-slate-400 text-xs font-medium">{authenticatedNgo}</p>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center space-x-2 px-3 py-2 rounded-lg border border-white/20 text-slate-200 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-xs font-semibold">Logout</span>
+            </button>
 
             {/* Stats Row (Desktop alignment) */}
             <div className="hidden md:flex space-x-4">
@@ -141,11 +287,6 @@ export default function NGOLogin() {
               <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600 text-sm font-medium">Cancel</button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">NGO Name</label>
-                <input required type="text" className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
-                  value={formData.ngo_name} onChange={e => setFormData({...formData, ngo_name: e.target.value})} placeholder="e.g. Red Cross Kolkata" />
-              </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Task Description</label>
                 <textarea required className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all" rows="2"

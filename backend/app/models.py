@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -41,3 +42,42 @@ class Match(Base):
 
     volunteer = relationship("Volunteer", back_populates="matches")
     request = relationship("NGORequest", back_populates="matches")
+
+
+class NGOAccount(Base):
+    __tablename__ = "ngo_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ngo_name = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    password_hash = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class NGORegistration(Base):
+    __tablename__ = "ngo_registrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ngo_name = Column(String, index=True, nullable=False)
+    email = Column(String, index=True, nullable=False)
+    phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    password_hash = Column(String, nullable=False)
+    status = Column(String, default="pending", nullable=False)
+    reviewed_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AdminAccount(Base):
+    __tablename__ = "admin_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    is_superadmin = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

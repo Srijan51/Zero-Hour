@@ -1,0 +1,408 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { ShieldCheck, Trash2, UserPlus, CheckCircle2, XCircle, Pencil, Save, X, ArrowLeft, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
+
+const ADMIN_TOAST_SESSION_KEY = 'adminSessionToast';
+
+export default function AdminPanel() {
+  const navigate = useNavigate();
+  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [adminToken, setAdminToken] = useState(localStorage.getItem('adminAuthToken') || '');
+  const [adminName, setAdminName] = useState(localStorage.getItem('adminName') || '');
+  const [toast, setToast] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(ADMIN_TOAST_SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [registrations, setRegistrations] = useState([]);
+  const [ngos, setNgos] = useState([]);
+
+  const [newNgo, setNewNgo] = useState({
+    ngo_name: '',
+    email: '',
+    phone: '',
+    address: '',
+    description: '',
+    password: '',
+  });
+
+  const [editingNgoId, setEditingNgoId] = useState(null);
+  const [editNgo, setEditNgo] = useState({
+    ngo_name: '',
+    email: '',
+    phone: '',
+    address: '',
+    description: '',
+    password: '',
+    is_active: true,
+  });
+
+  const showToast = (message, type = 'info') => {
+    const value = { message, type, timestamp: Date.now() };
+    setToast(value);
+    sessionStorage.setItem(ADMIN_TOAST_SESSION_KEY, JSON.stringify(value));
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = setTimeout(() => {
+      setToast(null);
+      sessionStorage.removeItem(ADMIN_TOAST_SESSION_KEY);
+    }, 2600);
+    return () => clearTimeout(timeout);
+  }, [toast]);
+
+  const authHeaders = useMemo(
+    () => (adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+    [adminToken]
+  );
+
+  const fetchData = async () => {
+    if (!adminToken) return;
+    try {
+      const [regRes, ngoRes] = await Promise.all([
+        api.get('/admin/registrations?status=pending', { headers: authHeaders }),
+        api.get('/admin/ngos', { headers: authHeaders }),
+      ]);
+      setRegistrations(regRes.data);
+      setNgos(ngoRes.data);
+    } catch (err) {
+      if (err?.response?.status === 401) {
+        handleLogout();
+        showToast('Session expired. Please login again.', 'error');
+      }
+    }
+  };
+
+  useEffect(() => {
+    const verify = async () => {
+      if (!adminToken) return;
+      try {
+        const res = await api.get('/admin/me', { headers: authHeaders });
+        setAdminName(res.data.username);
+        localStorage.setItem('adminName', res.data.username);
+        fetchData();
+      } catch (err) {
+        handleLogout();
+        showToast('Admin session invalid. Please login again.', 'error');
+      }
+    };
+    verify();
+  }, [adminToken]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+
+    try {
+      const res = await api.post('/admin/login', credentials);
+      setAdminToken(res.data.token);
+      setAdminName(res.data.username);
+      localStorage.setItem('adminAuthToken', res.data.token);
+      localStorage.setItem('adminName', res.data.username);
+      setCredentials({ username: '', password: '' });
+      showToast('Admin login successful.', 'success');
+    } catch (err) {
+      showToast('Invalid admin credentials', 'error');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminAuthToken');
+    localStorage.removeItem('adminName');
+    setAdminToken('');
+    setAdminName('');
+    setRegistrations([]);
+    setNgos([]);
+  };
+
+  const approveRegistration = async (registrationId) => {
+    try {
+      await api.post(`/admin/registrations/${registrationId}/approve`, {}, { headers: authHeaders });
+      showToast('Registration approved and NGO account created.', 'success');
+      fetchData();
+    } catch (err) {
+      showToast(err?.response?.data?.detail || 'Failed to approve registration', 'error');
+    }
+  };
+
+  const rejectRegistration = async (registrationId) => {
+    try {
+      await api.post(`/admin/registrations/${registrationId}/reject`, {}, { headers: authHeaders });
+      showToast('Registration rejected.', 'success');
+      fetchData();
+    } catch (err) {
+      showToast(err?.response?.data?.detail || 'Failed to reject registration', 'error');
+    }
+  };
+
+  const createNgoDirectly = async (e) => {
+    e.preventDefault();
+
+    try {
+      await api.post('/admin/ngos', newNgo, { headers: authHeaders });
+      setNewNgo({ ngo_name: '', email: '', phone: '', address: '', description: '', password: '' });
+      showToast('NGO account created successfully.', 'success');
+      fetchData();
+    } catch (err) {
+      showToast(err?.response?.data?.detail || 'Failed to create NGO', 'error');
+    }
+  };
+
+  const deleteNgo = async (ngoId) => {
+    try {
+      await api.delete(`/admin/ngos/${ngoId}`, { headers: authHeaders });
+      showToast('NGO account deleted.', 'success');
+      fetchData();
+    } catch (err) {
+      showToast(err?.response?.data?.detail || 'Failed to delete NGO', 'error');
+    }
+  };
+
+  const startEditNgo = (ngo) => {
+    setEditingNgoId(ngo.id);
+    setEditNgo({
+      ngo_name: ngo.ngo_name || '',
+      email: ngo.email || '',
+      phone: ngo.phone || '',
+      address: ngo.address || '',
+      description: ngo.description || '',
+      password: '',
+      is_active: Boolean(ngo.is_active),
+    });
+  };
+
+  const cancelEditNgo = () => {
+    setEditingNgoId(null);
+    setEditNgo({
+      ngo_name: '',
+      email: '',
+      phone: '',
+      address: '',
+      description: '',
+      password: '',
+      is_active: true,
+    });
+  };
+
+  const saveNgoEdit = async (ngoId) => {
+    try {
+      const payload = {
+        ngo_name: editNgo.ngo_name,
+        email: editNgo.email,
+        phone: editNgo.phone,
+        address: editNgo.address,
+        description: editNgo.description,
+        is_active: editNgo.is_active,
+      };
+
+      if (editNgo.password.trim()) {
+        payload.password = editNgo.password.trim();
+      }
+
+      await api.put(`/admin/ngos/${ngoId}`, payload, { headers: authHeaders });
+      cancelEditNgo();
+      showToast('NGO details updated.', 'success');
+      fetchData();
+    } catch (err) {
+      showToast(err?.response?.data?.detail || 'Failed to update NGO', 'error');
+    }
+  };
+
+  if (!adminToken) {
+    return (
+      <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar flex flex-col items-center justify-center px-4 pb-16 md:pb-0">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-6 slide-up">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center space-x-1 text-xs font-semibold text-slate-500 hover:text-primary transition-colors mb-3"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back</span>
+          </button>
+
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center shadow-lg">
+              <ShieldCheck className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">Admin Access</h1>
+              <p className="text-slate-500 text-xs font-medium">Site administrator only</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-3">
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Username</label>
+              <input
+                required
+                type="text"
+                className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                value={credentials.username}
+                onChange={e => setCredentials({ ...credentials, username: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Password</label>
+              <input
+                required
+                type="password"
+                className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                value={credentials.password}
+                onChange={e => setCredentials({ ...credentials, password: e.target.value })}
+              />
+            </div>
+            <button type="submit" className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary text-white font-bold rounded-xl shadow-md transition-all active:scale-95">
+              Login as Admin
+            </button>
+          </form>
+        </div>
+
+        {toast && (
+          <div className="fixed top-4 right-4 z-[70]">
+            <div className={`max-w-sm px-4 py-3 rounded-xl shadow-xl border text-sm font-semibold flex items-center space-x-2 ${
+              toast.type === 'error'
+                ? 'bg-rose-50 text-rose-700 border-rose-100'
+                : toast.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                  : 'bg-slate-100 text-slate-700 border-slate-200'
+            }`}>
+              <Info className="w-4 h-4" />
+              <span>{toast.message}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar px-4 py-6 pb-16 md:pb-6">
+      <div className="max-w-6xl mx-auto space-y-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-extrabold text-slate-800">Admin Panel</h1>
+            <p className="text-xs text-slate-500">Signed in as {adminName}</p>
+          </div>
+          <button onClick={handleLogout} className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:text-slate-900 hover:border-slate-300">
+            Logout
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+            <h2 className="text-sm font-bold text-slate-700 mb-3">Pending NGO Registrations</h2>
+            <div className="space-y-3 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+              {registrations.length === 0 && <p className="text-xs text-slate-400">No pending registrations.</p>}
+              {registrations.map(reg => (
+                <div key={reg.id} className="p-3 border border-slate-100 rounded-xl">
+                  <p className="text-sm font-bold text-slate-800">{reg.ngo_name}</p>
+                  <p className="text-xs text-slate-500">{reg.email}</p>
+                  <p className="text-xs text-slate-500 mt-1">{reg.description || 'No description'}</p>
+                  <div className="mt-2 flex items-center space-x-2">
+                    <button onClick={() => approveRegistration(reg.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Approve</span>
+                    </button>
+                    <button onClick={() => rejectRegistration(reg.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold border border-rose-100">
+                      <XCircle className="w-3 h-3" />
+                      <span>Reject</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+            <h2 className="text-sm font-bold text-slate-700 mb-3">Add NGO Directly</h2>
+            <form onSubmit={createNgoDirectly} className="space-y-2">
+              <input required type="text" placeholder="NGO Name" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.ngo_name} onChange={e => setNewNgo({ ...newNgo, ngo_name: e.target.value })} />
+              <input required type="email" placeholder="Email" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.email} onChange={e => setNewNgo({ ...newNgo, email: e.target.value })} />
+              <input type="text" placeholder="Phone" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.phone} onChange={e => setNewNgo({ ...newNgo, phone: e.target.value })} />
+              <input type="text" placeholder="Address" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.address} onChange={e => setNewNgo({ ...newNgo, address: e.target.value })} />
+              <textarea placeholder="Description" rows="2" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.description} onChange={e => setNewNgo({ ...newNgo, description: e.target.value })} />
+              <input required type="password" placeholder="Password" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.password} onChange={e => setNewNgo({ ...newNgo, password: e.target.value })} />
+              <button type="submit" className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-bold inline-flex items-center justify-center space-x-1">
+                <UserPlus className="w-4 h-4" />
+                <span>Create NGO</span>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <h2 className="text-sm font-bold text-slate-700 mb-3">Registered NGOs</h2>
+          <div className="space-y-2">
+            {ngos.map(ngo => (
+              <div key={ngo.id} className="p-3 border border-slate-100 rounded-xl">
+                {editingNgoId === ngo.id ? (
+                  <div className="space-y-2">
+                    <input type="text" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.ngo_name} onChange={e => setEditNgo({ ...editNgo, ngo_name: e.target.value })} placeholder="NGO Name" />
+                    <input type="email" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.email} onChange={e => setEditNgo({ ...editNgo, email: e.target.value })} placeholder="Email" />
+                    <input type="text" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.phone} onChange={e => setEditNgo({ ...editNgo, phone: e.target.value })} placeholder="Phone" />
+                    <input type="text" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.address} onChange={e => setEditNgo({ ...editNgo, address: e.target.value })} placeholder="Address" />
+                    <textarea rows="2" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.description} onChange={e => setEditNgo({ ...editNgo, description: e.target.value })} placeholder="Description" />
+                    <input type="password" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.password} onChange={e => setEditNgo({ ...editNgo, password: e.target.value })} placeholder="New password (optional)" />
+                    <label className="inline-flex items-center space-x-2 text-xs text-slate-600 font-semibold">
+                      <input type="checkbox" checked={editNgo.is_active} onChange={e => setEditNgo({ ...editNgo, is_active: e.target.checked })} />
+                      <span>Active account</span>
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={() => saveNgoEdit(ngo.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100">
+                        <Save className="w-3 h-3" />
+                        <span>Save</span>
+                      </button>
+                      <button onClick={cancelEditNgo} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                        <X className="w-3 h-3" />
+                        <span>Cancel</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{ngo.ngo_name}</p>
+                      <p className="text-xs text-slate-500">{ngo.email}</p>
+                      <p className="text-[11px] text-slate-400 mt-1">{ngo.is_active ? 'Active' : 'Inactive'}</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={() => startEditNgo(ngo)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold border border-blue-100">
+                        <Pencil className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
+                      <button onClick={() => deleteNgo(ngo.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold border border-rose-100">
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {toast && (
+        <div className="fixed top-4 right-4 z-[70]">
+          <div className={`max-w-sm px-4 py-3 rounded-xl shadow-xl border text-sm font-semibold flex items-center space-x-2 ${
+            toast.type === 'error'
+              ? 'bg-rose-50 text-rose-700 border-rose-100'
+              : toast.type === 'success'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                : 'bg-slate-100 text-slate-700 border-slate-200'
+          }`}>
+            <Info className="w-4 h-4" />
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
