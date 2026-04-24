@@ -10,6 +10,8 @@ export default function RegisterNGO() {
     phone: '',
     address: '',
     description: '',
+    certificate_80g_number: '',
+    certificate_12a_number: '',
     password: '',
   });
   const [status, setStatus] = useState('');
@@ -29,11 +31,17 @@ export default function RegisterNGO() {
         phone: '',
         address: '',
         description: '',
+        certificate_80g_number: '',
+        certificate_12a_number: '',
         password: '',
       });
     } catch (err) {
+      const backendDetail = err?.response?.data?.detail;
+      const message = Array.isArray(backendDetail)
+        ? backendDetail.map((item) => item?.msg || item).join(', ')
+        : backendDetail;
       setStatus('');
-      setError(err?.response?.data?.detail || 'Failed to submit registration');
+      setError(message || 'Failed to submit registration');
     }
   };
 
@@ -98,6 +106,31 @@ export default function RegisterNGO() {
                 value={formData.address}
                 onChange={e => setFormData({ ...formData, address: e.target.value })}
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">80G Certificate Number</label>
+                <input
+                  required
+                  type="text"
+                  className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                  value={formData.certificate_80g_number}
+                  onChange={e => setFormData({ ...formData, certificate_80g_number: e.target.value })}
+                  placeholder="Enter 80G certificate number"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">12A Certificate Number</label>
+                <input
+                  required
+                  type="text"
+                  className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                  value={formData.certificate_12a_number}
+                  onChange={e => setFormData({ ...formData, certificate_12a_number: e.target.value })}
+                  placeholder="Enter 12A certificate number"
+                />
+              </div>
             </div>
 
             <div>

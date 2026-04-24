@@ -92,6 +92,8 @@ def create_ngo_account(payload: NGOAccountCreateByAdmin, db: Session = Depends(g
         email=payload.email,
         phone=payload.phone,
         address=payload.address,
+        certificate_80g_number=payload.certificate_80g_number,
+        certificate_12a_number=payload.certificate_12a_number,
         description=payload.description,
         password_hash=hash_password(payload.password),
         is_active=True,
@@ -148,6 +150,10 @@ def update_ngo_account(
         ngo.phone = payload.phone
     if payload.address is not None:
         ngo.address = payload.address
+    if payload.certificate_80g_number is not None:
+        ngo.certificate_80g_number = payload.certificate_80g_number
+    if payload.certificate_12a_number is not None:
+        ngo.certificate_12a_number = payload.certificate_12a_number
     if payload.description is not None:
         ngo.description = payload.description
     if payload.is_active is not None:
@@ -193,6 +199,8 @@ def approve_registration(registration_id: int, db: Session = Depends(get_db), ad
         email=registration.email,
         phone=registration.phone,
         address=registration.address,
+        certificate_80g_number=registration.certificate_80g_number,
+        certificate_12a_number=registration.certificate_12a_number,
         description=registration.description,
         password_hash=registration.password_hash,
         is_active=True,

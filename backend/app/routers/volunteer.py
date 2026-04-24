@@ -30,7 +30,7 @@ async def process_voice_dispatch(
     # Remove 'location' from profile_data as it is not a valid Volunteer column
     profile_data.pop('location', None)
     
-    if lat and lng:
+    if lat is not None and lng is not None:
         profile_data['lat'] = lat
         profile_data['lng'] = lng
         
@@ -47,7 +47,7 @@ async def process_voice_dispatch(
     response_matches = []
     for score, req in top_matches:
         req_dict = req.__dict__.copy()
-        req_dict['match_score'] = score
+        req_dict['match_score'] = round(max(0.0, min(100.0, score)), 2)
         response_matches.append(req_dict)
         
     return {

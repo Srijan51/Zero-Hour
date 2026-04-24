@@ -27,6 +27,8 @@ export default function AdminPanel() {
     email: '',
     phone: '',
     address: '',
+    certificate_80g_number: '',
+    certificate_12a_number: '',
     description: '',
     password: '',
   });
@@ -37,6 +39,8 @@ export default function AdminPanel() {
     email: '',
     phone: '',
     address: '',
+    certificate_80g_number: '',
+    certificate_12a_number: '',
     description: '',
     password: '',
     is_active: true,
@@ -145,7 +149,7 @@ export default function AdminPanel() {
 
     try {
       await api.post('/admin/ngos', newNgo, { headers: authHeaders });
-      setNewNgo({ ngo_name: '', email: '', phone: '', address: '', description: '', password: '' });
+      setNewNgo({ ngo_name: '', email: '', phone: '', address: '', certificate_80g_number: '', certificate_12a_number: '', description: '', password: '' });
       showToast('NGO account created successfully.', 'success');
       fetchData();
     } catch (err) {
@@ -170,6 +174,8 @@ export default function AdminPanel() {
       email: ngo.email || '',
       phone: ngo.phone || '',
       address: ngo.address || '',
+      certificate_80g_number: ngo.certificate_80g_number || '',
+      certificate_12a_number: ngo.certificate_12a_number || '',
       description: ngo.description || '',
       password: '',
       is_active: Boolean(ngo.is_active),
@@ -183,6 +189,8 @@ export default function AdminPanel() {
       email: '',
       phone: '',
       address: '',
+      certificate_80g_number: '',
+      certificate_12a_number: '',
       description: '',
       password: '',
       is_active: true,
@@ -196,6 +204,8 @@ export default function AdminPanel() {
         email: editNgo.email,
         phone: editNgo.phone,
         address: editNgo.address,
+        certificate_80g_number: editNgo.certificate_80g_number,
+        certificate_12a_number: editNgo.certificate_12a_number,
         description: editNgo.description,
         is_active: editNgo.is_active,
       };
@@ -303,6 +313,8 @@ export default function AdminPanel() {
                 <div key={reg.id} className="p-3 border border-slate-100 rounded-xl">
                   <p className="text-sm font-bold text-slate-800">{reg.ngo_name}</p>
                   <p className="text-xs text-slate-500">{reg.email}</p>
+                  <p className="text-xs text-slate-500 mt-1">80G: {reg.certificate_80g_number || 'Not provided'}</p>
+                  <p className="text-xs text-slate-500">12A: {reg.certificate_12a_number || 'Not provided'}</p>
                   <p className="text-xs text-slate-500 mt-1">{reg.description || 'No description'}</p>
                   <div className="mt-2 flex items-center space-x-2">
                     <button onClick={() => approveRegistration(reg.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100">
@@ -326,6 +338,8 @@ export default function AdminPanel() {
               <input required type="email" placeholder="Email" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.email} onChange={e => setNewNgo({ ...newNgo, email: e.target.value })} />
               <input type="text" placeholder="Phone" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.phone} onChange={e => setNewNgo({ ...newNgo, phone: e.target.value })} />
               <input type="text" placeholder="Address" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.address} onChange={e => setNewNgo({ ...newNgo, address: e.target.value })} />
+              <input required type="text" placeholder="80G Certificate Number" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.certificate_80g_number} onChange={e => setNewNgo({ ...newNgo, certificate_80g_number: e.target.value })} />
+              <input required type="text" placeholder="12A Certificate Number" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.certificate_12a_number} onChange={e => setNewNgo({ ...newNgo, certificate_12a_number: e.target.value })} />
               <textarea placeholder="Description" rows="2" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.description} onChange={e => setNewNgo({ ...newNgo, description: e.target.value })} />
               <input required type="password" placeholder="Password" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.password} onChange={e => setNewNgo({ ...newNgo, password: e.target.value })} />
               <button type="submit" className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-bold inline-flex items-center justify-center space-x-1">
@@ -347,6 +361,8 @@ export default function AdminPanel() {
                     <input type="email" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.email} onChange={e => setEditNgo({ ...editNgo, email: e.target.value })} placeholder="Email" />
                     <input type="text" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.phone} onChange={e => setEditNgo({ ...editNgo, phone: e.target.value })} placeholder="Phone" />
                     <input type="text" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.address} onChange={e => setEditNgo({ ...editNgo, address: e.target.value })} placeholder="Address" />
+                    <input type="text" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.certificate_80g_number} onChange={e => setEditNgo({ ...editNgo, certificate_80g_number: e.target.value })} placeholder="80G Certificate Number" />
+                    <input type="text" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.certificate_12a_number} onChange={e => setEditNgo({ ...editNgo, certificate_12a_number: e.target.value })} placeholder="12A Certificate Number" />
                     <textarea rows="2" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.description} onChange={e => setEditNgo({ ...editNgo, description: e.target.value })} placeholder="Description" />
                     <input type="password" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={editNgo.password} onChange={e => setEditNgo({ ...editNgo, password: e.target.value })} placeholder="New password (optional)" />
                     <label className="inline-flex items-center space-x-2 text-xs text-slate-600 font-semibold">

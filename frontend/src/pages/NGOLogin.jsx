@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Lock } from 'lucide-react';
+import { Shield, Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Lock, Navigation } from 'lucide-react';
 import api from '../services/api';
+import PlacesAutocomplete from '../components/PlacesAutocomplete';
 
 const URGENCY_LABELS = {
   1: { label: 'Low', color: 'bg-slate-100 text-slate-500' },
@@ -12,7 +13,7 @@ const URGENCY_LABELS = {
 };
 
 export default function NGOLogin() {
-  const [credentials, setCredentials] = useState({ ngo_name: '', password: '' });
+  const [credentials, setCredentials] = useState({ identifier: '', password: '' });
   const [token, setToken] = useState(localStorage.getItem('ngoAuthToken') || '');
   const [authenticatedNgo, setAuthenticatedNgo] = useState(localStorage.getItem('ngoName') || '');
   const [authStatus, setAuthStatus] = useState('');
@@ -22,6 +23,7 @@ export default function NGOLogin() {
     task_description: '',
     required_skills: '',
     required_assets: '',
+    location_text: '',
     lat: 22.57,
     lng: 88.36,
     urgency: 3
@@ -89,7 +91,7 @@ export default function NGOLogin() {
       localStorage.setItem('ngoName', ngoName);
       setToken(authToken);
       setAuthenticatedNgo(ngoName);
-      setCredentials({ ngo_name: '', password: '' });
+      setCredentials({ identifier: '', password: '' });
       setAuthStatus('');
     } catch (error) {
       setAuthStatus('Invalid NGO credentials. Access denied.');
@@ -117,12 +119,16 @@ export default function NGOLogin() {
       };
       await api.post('/ngo/requests', payload, { headers: authHeaders });
       setStatus('Task Posted successfully!');
-      setFormData({ ...formData, task_description: '', required_skills: '', required_assets: '' });
+      setFormData({ ...formData, task_description: '', required_skills: '', required_assets: '', location_text: '' });
       setShowForm(false);
       fetchRequests();
       setTimeout(() => setStatus(''), 3000);
     } catch (error) {
-      setStatus(error?.response?.status === 401 ? 'Session expired. Please login again.' : 'Failed to post task.');
+      const backendDetail = error?.response?.data?.detail;
+      const message = Array.isArray(backendDetail)
+        ? backendDetail.map((item) => item?.msg || item).join(', ')
+        : backendDetail;
+      setStatus(error?.response?.status === 401 ? 'Session expired. Please login again.' : (message || 'Failed to post task.'));
     }
   };
 
@@ -153,14 +159,14 @@ export default function NGOLogin() {
 
           <form onSubmit={handleLogin} className="space-y-3">
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">NGO Name</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">NGO Name or Email</label>
               <input
                 required
                 type="text"
                 className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
-                value={credentials.ngo_name}
-                onChange={e => setCredentials({ ...credentials, ngo_name: e.target.value })}
-                placeholder="e.g. Red Cross Kolkata"
+                value={credentials.identifier}
+                onChange={e => setCredentials({ ...credentials, identifier: e.target.value })}
+                placeholder="Enter NGO name or registered email"
               />
             </div>
 
@@ -305,6 +311,22 @@ export default function NGOLogin() {
                 </div>
               </div>
 
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Broadcast Location</label>
+                <PlacesAutocomplete
+                  value={formData.location_text}
+                  onChange={(text, lat, lng) => {
+                    const update = { ...formData, location_text: text };
+                    if (lat !== null && lng !== null) {
+                      update.lat = lat;
+                      update.lng = lng;
+                    }
+                    setFormData(update);
+                  }}
+                  placeholder="Search for a location..."
+                />
+              </div>
+
               {/* Urgency Slider */}
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -367,6 +389,9 @@ export default function NGOLogin() {
                   )}
                 </div>
                 <p className="text-slate-500 text-xs mt-0.5 line-clamp-1">{req.task_description}</p>
+                {req.location_text && (
+                  <p className="text-slate-400 text-[11px] mt-1">Location: {req.location_text}</p>
+                )}
                 <div className="flex items-center space-x-2 mt-2">
                   {req.required_skills?.slice(0, 2).map(s => (
                     <span key={s} className="text-[9px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">{s}</span>
@@ -387,6 +412,16 @@ export default function NGOLogin() {
                     <Radio className="w-3 h-3 animate-pulse" />
                     <span>Open</span>
                   </span>
+                )}
+                {(req.google_maps_url || (req.lat !== undefined && req.lng !== undefined)) && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(req.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${req.lat},${req.lng}`, '_blank')}
+                    className="mt-2 inline-flex items-center space-x-1 px-2.5 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg border border-slate-200"
+                  >
+                    <Navigation className="w-3 h-3" />
+                    <span>Route</span>
+                  </button>
                 )}
               </div>
             </div>

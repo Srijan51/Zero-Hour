@@ -24,6 +24,8 @@ class NGORequest(Base):
     task_description = Column(String)
     required_skills = Column(JSON, default=[])
     required_assets = Column(JSON, default=[])
+    location_text = Column(String, nullable=True)
+    google_maps_url = Column(String, nullable=True)
     lat = Column(Float)
     lng = Column(Float)
     urgency = Column(Integer, default=3)
@@ -39,6 +41,10 @@ class Match(Base):
     request_id = Column(Integer, ForeignKey("ngo_requests.id"))
     score = Column(Float)
     status = Column(String, default="pending") # pending, en_route, on_site, completed
+    eta_minutes = Column(Integer, nullable=True)  # Real ETA from Google Maps Distance Matrix
+    eta_text = Column(String, nullable=True)       # Human-readable ETA string, e.g. "23 mins"
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     volunteer = relationship("Volunteer", back_populates="matches")
     request = relationship("NGORequest", back_populates="matches")
@@ -52,6 +58,8 @@ class NGOAccount(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     phone = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    certificate_80g_number = Column(String, nullable=True)
+    certificate_12a_number = Column(String, nullable=True)
     description = Column(String, nullable=True)
     password_hash = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -66,6 +74,8 @@ class NGORegistration(Base):
     email = Column(String, index=True, nullable=False)
     phone = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    certificate_80g_number = Column(String, nullable=True)
+    certificate_12a_number = Column(String, nullable=True)
     description = Column(String, nullable=True)
     password_hash = Column(String, nullable=False)
     status = Column(String, default="pending", nullable=False)

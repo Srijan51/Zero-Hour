@@ -1,7 +1,9 @@
 import secrets
+from urllib.parse import quote_plus
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import NGOAccount, NGORegistration, NGORequest
@@ -58,6 +60,8 @@ def register_ngo(payload: NGORegistrationCreate, db: Session = Depends(get_db)):
         email=payload.email,
         phone=payload.phone,
         address=payload.address,
+        certificate_80g_number=payload.certificate_80g_number,
+        certificate_12a_number=payload.certificate_12a_number,
         description=payload.description,
         password_hash=hash_password(payload.password),
         status="pending",
@@ -70,7 +74,11 @@ def register_ngo(payload: NGORegistrationCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=NGOLoginResponse)
 def ngo_login(payload: NGOLoginRequest, db: Session = Depends(get_db)):
-    ngo = db.query(NGOAccount).filter(NGOAccount.ngo_name == payload.ngo_name, NGOAccount.is_active == True).first()
+    identifier = (payload.identifier or payload.ngo_name or payload.email or "").strip()
+    ngo = db.query(NGOAccount).filter(
+        NGOAccount.is_active == True,
+        or_(NGOAccount.ngo_name == identifier, NGOAccount.email == identifier),
+    ).first()
     if not ngo or not verify_password(payload.password, ngo.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid NGO credentials")
 
@@ -86,6 +94,8 @@ def ngo_me(ngo: NGOAccount = Depends(_get_authenticated_ngo)):
 @router.post("/requests", response_model=NGORequestResponse)
 def create_ngo_request(req: NGORequestCreate, db: Session = Depends(get_db), ngo: NGOAccount = Depends(_get_authenticated_ngo)):
     request_data = req.model_dump()
+    if request_data.get("location_text") and not request_data.get("google_maps_url"):
+        request_data["google_maps_url"] = f"https://www.google.com/maps/search/?api=1&query={quote_plus(request_data['location_text'])}"
     # Server-side binding ensures only authenticated NGOs can post under their own name.
     request_data["ngo_name"] = ngo.ngo_name
     db_req = NGORequest(**request_data)

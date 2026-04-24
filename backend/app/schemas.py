@@ -23,13 +23,23 @@ class NGORequestBase(BaseModel):
     task_description: str
     required_skills: List[str] = []
     required_assets: List[str] = []
+    location_text: Optional[str] = None
+    google_maps_url: Optional[str] = None
     lat: float
     lng: float
     urgency: int = 3
     status: str = "open"
 
-class NGORequestCreate(NGORequestBase):
-    pass
+class NGORequestCreate(BaseModel):
+    task_description: str
+    required_skills: List[str] = []
+    required_assets: List[str] = []
+    location_text: Optional[str] = None
+    google_maps_url: Optional[str] = None
+    lat: float
+    lng: float
+    urgency: int = 3
+    status: str = "open"
 
 class NGORequestResponse(NGORequestBase):
     id: int
@@ -38,7 +48,9 @@ class NGORequestResponse(NGORequestBase):
         from_attributes = True
 
 class NGOLoginRequest(BaseModel):
-    ngo_name: str
+    identifier: Optional[str] = None
+    ngo_name: Optional[str] = None
+    email: Optional[str] = None
     password: str
 
 class NGOLoginResponse(BaseModel):
@@ -51,6 +63,8 @@ class NGORegistrationCreate(BaseModel):
     email: str
     phone: Optional[str] = None
     address: Optional[str] = None
+    certificate_80g_number: str
+    certificate_12a_number: str
     description: Optional[str] = None
     password: str
 
@@ -61,6 +75,8 @@ class NGORegistrationResponse(BaseModel):
     email: str
     phone: Optional[str] = None
     address: Optional[str] = None
+    certificate_80g_number: Optional[str] = None
+    certificate_12a_number: Optional[str] = None
     description: Optional[str] = None
     status: str
 
@@ -74,6 +90,8 @@ class NGOAccountResponse(BaseModel):
     email: str
     phone: Optional[str] = None
     address: Optional[str] = None
+    certificate_80g_number: Optional[str] = None
+    certificate_12a_number: Optional[str] = None
     description: Optional[str] = None
     is_active: bool
 
@@ -86,6 +104,8 @@ class NGOAccountCreateByAdmin(BaseModel):
     email: str
     phone: Optional[str] = None
     address: Optional[str] = None
+    certificate_80g_number: str
+    certificate_12a_number: str
     description: Optional[str] = None
     password: str
 
@@ -95,6 +115,8 @@ class NGOAccountUpdateByAdmin(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    certificate_80g_number: Optional[str] = None
+    certificate_12a_number: Optional[str] = None
     description: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
@@ -119,7 +141,20 @@ class MatchResponse(BaseModel):
     request_id: int
     score: float
     status: str
+    eta_minutes: Optional[int] = None
+    eta_text: Optional[str] = None
     request: Optional[NGORequestResponse] = None
 
     class Config:
         from_attributes = True
+
+
+class MatchLiveResponse(BaseModel):
+    id: int
+    status: str
+    progress_percent: float
+    eta_minutes: int
+    eta_text: Optional[str] = None
+    eta_arrival_time: Optional[str] = None
+    status_message: str
+    request: Optional[NGORequestResponse] = None

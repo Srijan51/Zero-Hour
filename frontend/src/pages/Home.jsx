@@ -5,13 +5,80 @@ import MatchResults from '../components/MatchResults';
 import api from '../services/api';
 import { Activity, Users, AlertTriangle, Zap } from 'lucide-react';
 
+function getCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation is not supported in this browser.'));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      reject,
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 10000,
+      }
+    );
+  });
+}
+
 export default function Home() {
   const [matches, setMatches] = useState(null);
   const [volunteerId, setVolunteerId] = useState(null);
   const [stats, setStats] = useState({ requests: 0 });
-  
-  const currentLat = 22.5726;
-  const currentLng = 88.3639;
+  const [currentPosition, setCurrentPosition] = useState({ lat: 22.5726, lng: 88.3639 });
+
+  const currentLat = currentPosition.lat;
+  const currentLng = currentPosition.lng;
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCurrentPosition({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => {
+        // Keep fallback coordinates if location permission is denied.
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 60000,
+      }
+    );
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentPosition({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => {
+        // Ignore watch failures and keep last known coordinates.
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 15000,
+      }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
 
   // Fetch live stats
   useEffect(() => {
@@ -28,10 +95,18 @@ export default function Home() {
 
   const handleTranscript = async (transcript) => {
     try {
+      let latestPosition = { lat: currentLat, lng: currentLng };
+      try {
+        latestPosition = await getCurrentLocation();
+        setCurrentPosition(latestPosition);
+      } catch {
+        // Use last known position if fresh lookup fails.
+      }
+
       const formData = new FormData();
       formData.append('transcript', transcript);
-      formData.append('lat', currentLat);
-      formData.append('lng', currentLng);
+      formData.append('lat', String(latestPosition.lat));
+      formData.append('lng', String(latestPosition.lng));
 
       const response = await api.post('/volunteer/dispatch', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -114,6 +189,8 @@ export default function Home() {
            <MatchResults 
              matches={matches} 
              volunteerId={volunteerId}
+             currentLat={currentLat}
+             currentLng={currentLng}
              onReset={() => setMatches(null)}
            />
         ) : (
