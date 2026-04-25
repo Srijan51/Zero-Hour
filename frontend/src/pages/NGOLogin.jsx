@@ -34,6 +34,7 @@ export default function NGOLogin() {
   const [status, setStatus] = useState('');
   const [requests, setRequests] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [pendingDeleteRequestId, setPendingDeleteRequestId] = useState(null);
 
   // Get accurate browser location for the NGO form
   useEffect(() => {
@@ -254,11 +255,16 @@ export default function NGOLogin() {
     }
   };
 
-  const handleDeleteRequest = async (requestId) => {
-    if (!window.confirm('Are you sure you want to delete this request? This will also cancel any active matches.')) return;
+  const requestDeleteRequest = (requestId) => {
+    setPendingDeleteRequestId(requestId);
+  };
+
+  const confirmDeleteRequest = async () => {
+    if (!pendingDeleteRequestId) return;
     try {
-      await api.delete(`/ngo/requests/${requestId}`);
+      await api.delete(`/ngo/requests/${pendingDeleteRequestId}`);
       addToast('Request deleted successfully.', 'success');
+      setPendingDeleteRequestId(null);
       fetchRequests();
     } catch (err) {
       addToast('Failed to delete request.', 'error');
@@ -670,7 +676,7 @@ export default function NGOLogin() {
                     </a>
                   )}
                   <button
-                    onClick={() => handleDeleteRequest(req.id)}
+                    onClick={() => requestDeleteRequest(req.id)}
                     className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-white text-rose-400 text-[10px] font-bold rounded-lg border border-rose-100 hover:bg-rose-50 hover:text-rose-500 transition-colors active:scale-95"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -683,7 +689,7 @@ export default function NGOLogin() {
               {isMatched && (
                 <div className="mt-2 pt-2 border-t border-slate-50">
                   <button
-                    onClick={() => handleDeleteRequest(req.id)}
+                    onClick={() => requestDeleteRequest(req.id)}
                     className="inline-flex items-center space-x-1 px-2 py-1 text-rose-300 text-[9px] font-bold rounded hover:text-rose-500 transition-colors"
                   >
                     <Trash2 className="w-2.5 h-2.5" />
@@ -697,6 +703,33 @@ export default function NGOLogin() {
         </div>
       </div>
       </div>
+
+      {pendingDeleteRequestId && (
+        <div className="fixed inset-0 z-[80] bg-slate-900/45 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-100 shadow-xl p-5 slide-up">
+            <h3 className="text-base font-extrabold text-slate-800">Delete Request?</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              This will delete the request and cancel any active volunteer matches linked to it.
+            </p>
+            <div className="mt-4 flex items-center justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteRequestId(null)}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteRequest}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -211,21 +211,22 @@ a:focus-visible {
 
 /* Panel background for NGO/Admin dashboards */
 .panel-bg {
+  position: relative;
+  isolation: isolate;
   background:
-    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(168, 85, 247, 0.05) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 50% at 50% 50%, rgba(99, 102, 241, 0.02) 0%, transparent 80%),
-    linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    radial-gradient(ellipse 80% 60% at 6% 0%, rgba(14, 116, 144, 0.22) 0%, transparent 56%),
+    radial-gradient(ellipse 68% 52% at 94% 100%, rgba(217, 119, 6, 0.18) 0%, transparent 58%),
+    linear-gradient(180deg, #eaf4fb 0%, #fdfefe 100%);
 }
 
 .panel-bg::before {
   content: '';
   position: fixed;
-  top: -120px;
-  right: -80px;
-  width: 350px;
-  height: 350px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+  top: -140px;
+  right: -120px;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.2) 0%, transparent 72%);
   border-radius: 50%;
   pointer-events: none;
   z-index: 0;
@@ -234,11 +235,11 @@ a:focus-visible {
 .panel-bg::after {
   content: '';
   position: fixed;
-  bottom: -100px;
-  left: -60px;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.06) 0%, transparent 70%);
+  bottom: -120px;
+  left: -90px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.16) 0%, transparent 72%);
   border-radius: 50%;
   pointer-events: none;
   z-index: 0;
@@ -246,15 +247,13 @@ a:focus-visible {
 
 /* Login screen decorative background */
 .login-bg {
-  background:
-    radial-gradient(ellipse 70% 60% at 50% 0%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 50% at 80% 80%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
-    linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%);
+  position: relative;
+  isolation: isolate;
   background-image:
-    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-    radial-gradient(ellipse 70% 60% at 50% 0%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 50% at 80% 80%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
-    linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%);
+    linear-gradient(rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    radial-gradient(ellipse 80% 66% at 50% 0%, rgba(14, 116, 144, 0.2) 0%, transparent 58%),
+    radial-gradient(ellipse 55% 55% at 84% 84%, rgba(245, 158, 11, 0.16) 0%, transparent 56%),
+    linear-gradient(180deg, #e8f3fa 0%, #fcfdfd 100%);
   background-size: 40px 40px, 40px 40px, 100% 100%, 100% 100%, 100% 100%;
 }

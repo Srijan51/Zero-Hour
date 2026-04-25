@@ -46,7 +46,7 @@ export default function RegisterNGO() {
   };
 
   return (
-    <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar flex flex-col pb-16 md:pb-0 px-4 py-6">
+    <div className="h-full w-full login-bg relative overflow-y-auto custom-scrollbar flex flex-col pb-16 md:pb-0 px-4 py-6">
       <div className="w-full max-w-2xl mx-auto">
         <Link to="/ngo" className="inline-flex items-center space-x-2 text-slate-500 hover:text-primary transition-colors text-sm font-semibold mb-4">
           <ArrowLeft className="w-4 h-4" />

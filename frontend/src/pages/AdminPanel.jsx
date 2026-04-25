@@ -21,6 +21,7 @@ export default function AdminPanel() {
 
   const [registrations, setRegistrations] = useState([]);
   const [ngos, setNgos] = useState([]);
+  const [pendingDeleteNgo, setPendingDeleteNgo] = useState(null);
 
   const [newNgo, setNewNgo] = useState({
     ngo_name: '',
@@ -157,10 +158,12 @@ export default function AdminPanel() {
     }
   };
 
-  const deleteNgo = async (ngoId) => {
+  const confirmDeleteNgo = async () => {
+    if (!pendingDeleteNgo?.id) return;
     try {
-      await api.delete(`/admin/ngos/${ngoId}`, { headers: authHeaders });
+      await api.delete(`/admin/ngos/${pendingDeleteNgo.id}`, { headers: authHeaders });
       showToast('NGO account deleted.', 'success');
+      setPendingDeleteNgo(null);
       fetchData();
     } catch (err) {
       showToast(err?.response?.data?.detail || 'Failed to delete NGO', 'error');
@@ -225,7 +228,7 @@ export default function AdminPanel() {
 
   if (!adminToken) {
     return (
-      <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar flex flex-col items-center justify-center px-4 pb-16 md:pb-0">
+      <div className="h-full w-full login-bg relative overflow-y-auto custom-scrollbar flex flex-col items-center justify-center px-4 pb-16 md:pb-0">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-6 slide-up">
           <button
             type="button"
@@ -292,7 +295,7 @@ export default function AdminPanel() {
   }
 
   return (
-    <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar px-4 py-6 pb-16 md:pb-6 fade-in">
+    <div className="h-full w-full panel-bg relative overflow-y-auto custom-scrollbar px-4 py-6 pb-16 md:pb-6 fade-in">
       <div className="max-w-6xl mx-auto space-y-4 slide-up">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center justify-between">
           <div>
@@ -392,7 +395,7 @@ export default function AdminPanel() {
                         <Pencil className="w-3 h-3" />
                         <span>Edit</span>
                       </button>
-                      <button onClick={() => deleteNgo(ngo.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold border border-rose-100">
+                      <button onClick={() => setPendingDeleteNgo({ id: ngo.id, name: ngo.ngo_name })} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold border border-rose-100">
                         <Trash2 className="w-3 h-3" />
                         <span>Delete</span>
                       </button>
@@ -416,6 +419,33 @@ export default function AdminPanel() {
           }`}>
             <Info className="w-4 h-4" />
             <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      {pendingDeleteNgo && (
+        <div className="fixed inset-0 z-[80] bg-slate-900/45 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-100 shadow-xl p-5 slide-up">
+            <h3 className="text-base font-extrabold text-slate-800">Delete NGO Account?</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              You are deleting <span className="font-semibold text-slate-700">{pendingDeleteNgo.name}</span>. Associated requests and active sessions will also be removed.
+            </p>
+            <div className="mt-4 flex items-center justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteNgo(null)}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteNgo}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700"
+              >
+                Yes, Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
