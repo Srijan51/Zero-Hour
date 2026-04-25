@@ -18,11 +18,11 @@
 
 @layer utilities {
   .glass-panel {
-    @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_8px_32px_rgba(0, 0, 0, 0.08)];
+    @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.08)];
   }
 
   .glass-dark {
-    @apply bg-slate-900/60 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0, 0, 0, 0.3)];
+    @apply bg-slate-900/60 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)];
   }
 
   .glass-button {
