@@ -47,6 +47,27 @@ def _ensure_ngo_certificate_columns() -> None:
         if "eta_text" not in match_columns:
             connection.execute(text("ALTER TABLE matches ADD COLUMN eta_text VARCHAR"))
 
+        # Volunteer accountability columns
+        volunteer_columns = {column["name"] for column in inspector.get_columns("volunteers")}
+        if "phone" not in volunteer_columns:
+            connection.execute(text("ALTER TABLE volunteers ADD COLUMN phone VARCHAR"))
+        if "name" not in volunteer_columns:
+            connection.execute(text("ALTER TABLE volunteers ADD COLUMN name VARCHAR"))
+
+        # Match tracking columns
+        if "volunteer_lat" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN volunteer_lat FLOAT"))
+        if "volunteer_lng" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN volunteer_lng FLOAT"))
+        if "last_ping_at" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN last_ping_at DATETIME"))
+        if "no_show_flagged" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN no_show_flagged BOOLEAN DEFAULT 0"))
+        if "arrived_at" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN arrived_at DATETIME"))
+        if "delay_notified_at" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN delay_notified_at DATETIME"))
+
         # Migrate legacy 90G values into the new 80G columns when present.
         if "certificate_90g_number" in ngo_account_columns:
             connection.execute(text(
@@ -100,3 +121,41 @@ def setup_default_admin():
 @app.get("/")
 def read_root():
     return {"message": "Zero Hour API is running"}
+
+
+@app.get("/stats")
+def get_stats():
+    """Return live platform statistics from the database."""
+    from datetime import datetime, timedelta, timezone
+    from app.models import Match, NGORequest, Volunteer
+
+    db = SessionLocal()
+    try:
+        open_requests = db.query(NGORequest).filter(NGORequest.status == "open").count()
+        matched_count = db.query(NGORequest).filter(NGORequest.status == "matched").count()
+
+        # Count volunteers from the last 24 hours (active volunteers)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        total_volunteers = db.query(Volunteer).count()
+
+        # Average match time: use the latest 20 matches to compute average creation gap
+        recent_matches = (
+            db.query(Match)
+            .filter(Match.eta_minutes.isnot(None))
+            .order_by(Match.id.desc())
+            .limit(20)
+            .all()
+        )
+        if recent_matches:
+            avg_eta = sum(m.eta_minutes for m in recent_matches if m.eta_minutes) / len(recent_matches)
+        else:
+            avg_eta = 0
+
+        return {
+            "open_requests": open_requests,
+            "matched_count": matched_count,
+            "total_volunteers": total_volunteers,
+            "avg_eta_minutes": round(avg_eta, 1),
+        }
+    finally:
+        db.close()

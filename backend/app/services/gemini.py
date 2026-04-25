@@ -21,14 +21,28 @@ def parse_volunteer_speech(transcript: str) -> dict:
 
     prompt = f"""
 You are a volunteer profile parser for a crisis dispatch system.
-Extract from the user's speech and return ONLY valid JSON, no markdown:
+Extract structured data from the user's speech. Return ONLY valid JSON, no markdown:
 {{
 "intent": "help",
-"skills": ["list of skills mentioned"],
-"assets": ["list of physical assets like vehicle, boat, generator"],
-"availability_hours": <number>,
+"skills": ["list of skills"],
+"assets": ["list of physical assets"],
+"availability_hours": <number or null>,
 "location": null
 }}
+
+IMPORTANT: Use ONLY these canonical terms for skills and assets when applicable:
+- Skills: "first aid", "medical", "driving", "swimming", "construction", "heavy lifting", "childcare", "animal handling", "logistics", "plumbing", "electrical", "technical", "organization"
+- Assets: "vehicle", "4x4 vehicle", "boat", "generator", "ambulance", "tools", "carriers"
+
+Map user language to these terms. For example:
+- "car" / "jeep" / "SUV" / "truck" → "vehicle"
+- "four-wheel drive" / "4WD" / "off-road vehicle" → "4x4 vehicle"
+- "I can drive" → skill: "driving"
+- "medical training" / "paramedic" / "nurse" / "doctor" → "medical"
+- "first aid kit" → skill: "first aid"
+- "I can swim" → skill: "swimming"
+- "construction experience" → skill: "construction"
+
 If a field is not mentioned, use null or empty array. Never return anything outside the JSON object.
 
 Speech: "{transcript}"

@@ -62,28 +62,20 @@ export default function VoiceCapture({ onTranscriptComplete }) {
       setIsRecording(false);
       setIsProcessing(true);
       
-      setTimeout(() => {
-        setIsProcessing(false);
-        onTranscriptComplete(transcript || "I have a 4x4 vehicle and basic first aid.");
-      }, 1000);
+      // Send immediately — no artificial delay
+      onTranscriptComplete(transcript || "I have a 4x4 vehicle and basic first aid.");
     }
   };
 
   const handleQuickPhrase = (phrase) => {
     setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      onTranscriptComplete(phrase);
-    }, 800);
+    onTranscriptComplete(phrase);
   };
 
   const handleTextSubmit = () => {
     if (!textInput.trim()) return;
     setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      onTranscriptComplete(textInput.trim());
-    }, 800);
+    onTranscriptComplete(textInput.trim());
   };
 
   const handleKeyDown = (e) => {

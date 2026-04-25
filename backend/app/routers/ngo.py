@@ -106,4 +106,20 @@ def create_ngo_request(req: NGORequestCreate, db: Session = Depends(get_db), ngo
 
 @router.get("/requests", response_model=List[NGORequestResponse])
 def get_all_requests(db: Session = Depends(get_db)):
-    return db.query(NGORequest).filter(NGORequest.status == "open").all()
+    return db.query(NGORequest).filter(
+        NGORequest.status.in_(["open", "matched", "pending_confirmation"])
+    ).all()
+
+
+@router.delete("/requests/{request_id}")
+def delete_request(request_id: int, db: Session = Depends(get_db)):
+    req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    # Cancel associated matches
+    from app.models import Match
+    db.query(Match).filter(Match.request_id == request_id).delete()
+    db.delete(req)
+    db.commit()
+    return {"ok": True, "deleted_id": request_id}

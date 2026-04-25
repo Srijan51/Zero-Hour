@@ -17,67 +17,148 @@ def haversine(lat1, lon1, lat2, lon2):
     distance = R * c
     return distance
 
-def _normalize_term(value):
-    if value is None:
-        return ""
-    normalized = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(value).lower())).strip()
-    aliases = {
-        "four by four": "4x4",
-        "4 by 4": "4x4",
-        "vehicle": "vehicle",
-        "car": "vehicle",
-        "jeep": "vehicle",
-        "ambulance": "ambulance",
-        "first aid": "first aid",
-        "medical": "medical",
-        "boat": "boat",
-        "generator": "generator",
-    }
-    return aliases.get(normalized, normalized)
+# ── Aliases: map common synonyms to canonical terms ──
+ALIASES = {
+    "car": "vehicle",
+    "jeep": "vehicle",
+    "truck": "vehicle",
+    "van": "vehicle",
+    "suv": "vehicle",
+    "automobile": "vehicle",
+    "four by four": "4x4",
+    "4 by 4": "4x4",
+    "4wd": "4x4",
+    "awd": "4x4",
+    "first aid": "first_aid",
+    "firstaid": "first_aid",
+    "medical": "medical",
+    "paramedic": "medical",
+    "doctor": "medical",
+    "nurse": "medical",
+    "medic": "medical",
+    "boat": "boat",
+    "kayak": "boat",
+    "canoe": "boat",
+    "raft": "boat",
+    "generator": "generator",
+    "genset": "generator",
+    "ambulance": "ambulance",
+    "swim": "swimming",
+    "swimmer": "swimming",
+    "swimming": "swimming",
+    "construction": "construction",
+    "builder": "construction",
+    "heavy lifting": "heavy_lifting",
+    "lifting": "heavy_lifting",
+    "strong": "heavy_lifting",
+    "driving": "driving",
+    "drive": "driving",
+    "driver": "driving",
+    "logistics": "logistics",
+    "organization": "organization",
+    "organizer": "organization",
+    "childcare": "childcare",
+    "plumbing": "plumbing",
+    "plumber": "plumbing",
+    "electrical": "electrical",
+    "electrician": "electrical",
+    "technical": "technical",
+    "tools": "tools",
+    "carriers": "carriers",
+}
+
+# Multi-word alias phrases to check before single-word tokenization
+MULTI_WORD_ALIASES = {
+    "four by four": "4x4",
+    "4 by 4": "4x4",
+    "first aid": "first_aid",
+    "heavy lifting": "heavy_lifting",
+    "construction tools": "construction",
+}
 
 
-def _token_set(value):
-    normalized = _normalize_term(value)
-    if not normalized:
+def _expand_to_canonical_tokens(value):
+    """Convert a skill/asset string into a set of canonical tokens."""
+    if not value:
         return set()
-    return {token for token in normalized.split(" ") if token}
+    text = re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
+    text = re.sub(r"\s+", " ", text)
+    if not text:
+        return set()
+
+    tokens = set()
+
+    # Check multi-word aliases first
+    remaining = text
+    for phrase, canonical in MULTI_WORD_ALIASES.items():
+        if phrase in remaining:
+            tokens.add(canonical)
+            remaining = remaining.replace(phrase, " ")
+
+    # Tokenize remaining words and alias each one
+    for word in remaining.split():
+        word = word.strip()
+        if not word:
+            continue
+        canonical = ALIASES.get(word, word)
+        tokens.add(canonical)
+
+    return tokens
 
 
 def _is_semantic_match(req_term, vol_term):
-    if req_term == vol_term:
-        return True
-    if req_term in vol_term or vol_term in req_term:
-        return True
+    """Check if a required term matches a volunteer term."""
+    req_tokens = _expand_to_canonical_tokens(req_term)
+    vol_tokens = _expand_to_canonical_tokens(vol_term)
 
-    req_tokens = _token_set(req_term)
-    vol_tokens = _token_set(vol_term)
     if not req_tokens or not vol_tokens:
         return False
 
-    overlap = len(req_tokens & vol_tokens)
-    min_required_overlap = max(1, min(len(req_tokens), len(vol_tokens)) // 2)
-    return overlap >= min_required_overlap
+    # Direct overlap: any shared canonical token = match
+    if req_tokens & vol_tokens:
+        return True
+
+    # Substring containment on the canonical forms
+    req_joined = " ".join(sorted(req_tokens))
+    vol_joined = " ".join(sorted(vol_tokens))
+    if req_joined in vol_joined or vol_joined in req_joined:
+        return True
+
+    return False
 
 
 def _match_ratio(vol_list, req_list):
-    req_terms = [_normalize_term(item) for item in (req_list or []) if _normalize_term(item)]
-    vol_terms = [_normalize_term(item) for item in (vol_list or []) if _normalize_term(item)]
+    """Fraction of required items that the volunteer satisfies."""
+    req_items = [item for item in (req_list or []) if item and str(item).strip()]
+    vol_items = [item for item in (vol_list or []) if item and str(item).strip()]
 
-    if not req_terms:
+    if not req_items:
         return 1.0
-    if not vol_terms:
+    if not vol_items:
         return 0.0
 
+    # Also build a flat set of all volunteer canonical tokens for broad matching
+    vol_all_tokens = set()
+    for v in vol_items:
+        vol_all_tokens |= _expand_to_canonical_tokens(v)
+
     matched_count = 0
-    for req_term in req_terms:
-        if any(_is_semantic_match(req_term, vol_term) for vol_term in vol_terms):
+    for req_item in req_items:
+        # First: try item-level semantic match
+        if any(_is_semantic_match(req_item, vol_item) for vol_item in vol_items):
+            matched_count += 1
+            continue
+        # Second: check if req tokens are a subset of the volunteer's full token pool
+        req_tokens = _expand_to_canonical_tokens(req_item)
+        if req_tokens and req_tokens <= vol_all_tokens:
             matched_count += 1
 
-    return matched_count / len(req_terms)
+    return matched_count / len(req_items)
+
 
 def compute_score(volunteer, request):
     # Proximity score ratio.
-    vol_lat, vol_lng = volunteer.lat or 22.5726, volunteer.lng or 88.3639 # Default Kolkata roughly
+    vol_lat, vol_lng = volunteer.lat or 22.5726, volunteer.lng or 88.3639
     distance = haversine(vol_lat, vol_lng, request.lat, request.lng)
     proximity_ratio = max(0.0, min(1.0, 1 - (distance / 50.0)))
 
@@ -87,7 +168,7 @@ def compute_score(volunteer, request):
     req_skills = request.required_skills or []
     req_assets = request.required_assets or []
 
-    # Keep percentages realistic by weighting what's actually requested.
+    # Weight based on what's actually requested.
     if req_skills and req_assets:
         skill_weight, asset_weight, proximity_weight = 40, 45, 15
     elif req_assets and not req_skills:
@@ -103,25 +184,20 @@ def compute_score(volunteer, request):
         + proximity_ratio * proximity_weight
     )
 
-    # Proportional penalties — reduce score but don't obliterate it.
-    if req_assets:
-        if asset_ratio == 0:
-            score *= 0.35
-        elif asset_ratio < 1.0:
-            score *= (0.7 + (asset_ratio * 0.3))
-    if req_skills:
-        if skill_ratio == 0:
-            score *= 0.5
-        elif skill_ratio < 1.0:
-            score *= (0.75 + (skill_ratio * 0.25))
+    # Gentle penalties only when *nothing* matches — partial matches are already
+    # reflected proportionally in the weighted score, no need to penalize again.
+    if req_assets and asset_ratio == 0:
+        score *= 0.5
+    if req_skills and skill_ratio == 0:
+        score *= 0.6
 
-    # Availability hours influence: reduce score for likely under-availability.
+    # Availability hours influence: slight reduction for very low availability.
     if volunteer.availability_hours is not None:
         availability = max(0.0, float(volunteer.availability_hours))
         if request.urgency >= 4 and availability < 1.0:
-            score *= 0.85
+            score *= 0.90
         elif request.urgency >= 3 and availability < 0.5:
-            score *= 0.9
+            score *= 0.92
 
     return round(max(0.0, min(100.0, score)), 2)
 

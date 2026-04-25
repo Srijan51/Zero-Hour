@@ -14,7 +14,7 @@ function App() {
   const showNav = location.pathname === '/' || location.pathname === '/ngo';
 
   return (
-    <div className="w-full h-full bg-slate-50 relative max-w-md md:max-w-none mx-auto shadow-[0_20px_60px_rgba(0,0,0,0.25)] md:shadow-none sm:rounded-[2.5rem] md:rounded-none sm:my-4 md:my-0 sm:h-[calc(100%-2rem)] md:h-full overflow-hidden ring-1 ring-slate-900/10 md:ring-0 transition-all flex flex-col md:flex-row">
+    <div className="w-full h-full bg-slate-50 relative mx-auto overflow-hidden flex flex-col md:flex-row">
       {/* PWA Overlays */}
       <OfflineBanner />
       <UpdatePrompt />

@@ -8,6 +8,8 @@ class VolunteerBase(BaseModel):
     availability_hours: Optional[float] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
+    phone: Optional[str] = None
+    name: Optional[str] = None
 
 class VolunteerCreate(VolunteerBase):
     pass
@@ -134,6 +136,12 @@ class AdminLoginResponse(BaseModel):
 class MatchConfirm(BaseModel):
     volunteer_id: int
     request_id: int
+    phone: Optional[str] = None
+    name: Optional[str] = None
+
+class CheckinRequest(BaseModel):
+    lat: float
+    lng: float
 
 class MatchResponse(BaseModel):
     id: int
@@ -143,7 +151,14 @@ class MatchResponse(BaseModel):
     status: str
     eta_minutes: Optional[int] = None
     eta_text: Optional[str] = None
+    volunteer_lat: Optional[float] = None
+    volunteer_lng: Optional[float] = None
+    no_show_flagged: bool = False
+    arrived_at: Optional[str] = None
+    delay_notified_at: Optional[str] = None
     request: Optional[NGORequestResponse] = None
+    volunteer_phone: Optional[str] = None
+    volunteer_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -157,4 +172,12 @@ class MatchLiveResponse(BaseModel):
     eta_text: Optional[str] = None
     eta_arrival_time: Optional[str] = None
     status_message: str
+    volunteer_lat: Optional[float] = None
+    volunteer_lng: Optional[float] = None
+    no_show_flagged: bool = False
+    delay_notified_at: Optional[str] = None
+    arrived: bool = False
+    volunteer_phone: Optional[str] = None
+    volunteer_name: Optional[str] = None
     request: Optional[NGORequestResponse] = None
+

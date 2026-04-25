@@ -23,7 +23,7 @@ function getCurrentLocation() {
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 10000,
+        maximumAge: 3000, // Only accept positions from the last 3 seconds
       }
     );
   });
@@ -32,29 +32,36 @@ function getCurrentLocation() {
 export default function Home() {
   const [matches, setMatches] = useState(null);
   const [volunteerId, setVolunteerId] = useState(null);
-  const [stats, setStats] = useState({ requests: 0 });
-  const [currentPosition, setCurrentPosition] = useState({ lat: 22.5726, lng: 88.3639 });
+  const [stats, setStats] = useState({ open_requests: 0, total_volunteers: 0, avg_eta_minutes: 0, matched_count: 0 });
+  const [currentPosition, setCurrentPosition] = useState(null);
+  const [locationReady, setLocationReady] = useState(false);
 
-  const currentLat = currentPosition.lat;
-  const currentLng = currentPosition.lng;
+  const currentLat = currentPosition?.lat ?? 22.5726;
+  const currentLng = currentPosition?.lng ?? 88.3639;
 
   useEffect(() => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setLocationReady(true);
+      return;
+    }
 
+    // Get a fresh, accurate position on first load (minimise cache)
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setCurrentPosition({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        setLocationReady(true);
       },
       () => {
         // Keep fallback coordinates if location permission is denied.
+        setLocationReady(true);
       },
       {
         enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 60000,
+        timeout: 10000,
+        maximumAge: 5000, // Only accept cached positions from the last 5 seconds
       }
     );
 
@@ -71,7 +78,7 @@ export default function Home() {
       {
         enableHighAccuracy: true,
         timeout: 12000,
-        maximumAge: 15000,
+        maximumAge: 10000,
       }
     );
 
@@ -80,13 +87,19 @@ export default function Home() {
     };
   }, []);
 
-  // Fetch live stats
+  // Fetch live stats from backend
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await api.get('/ngo/requests');
-        setStats({ requests: res.data.length });
-      } catch (e) { /* ignore */ }
+        const res = await api.get('/stats');
+        setStats(res.data);
+      } catch (e) {
+        // Fallback: try request count only
+        try {
+          const res = await api.get('/ngo/requests');
+          setStats(prev => ({ ...prev, open_requests: res.data.length }));
+        } catch { /* ignore */ }
+      }
     };
     fetchStats();
     const interval = setInterval(fetchStats, 10000);
@@ -158,7 +171,7 @@ export default function Home() {
               <AlertTriangle className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <p className="text-[18px] font-extrabold text-slate-800 leading-none">{stats.requests}</p>
+              <p className="text-[18px] font-extrabold text-slate-800 leading-none">{stats.open_requests}</p>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Active Needs</p>
             </div>
           </div>
@@ -167,7 +180,7 @@ export default function Home() {
               <Users className="w-4 h-4 text-green-600" />
             </div>
             <div>
-              <p className="text-[18px] font-extrabold text-slate-800 leading-none">12</p>
+              <p className="text-[18px] font-extrabold text-slate-800 leading-none">{stats.total_volunteers}</p>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Volunteers</p>
             </div>
           </div>
@@ -176,8 +189,8 @@ export default function Home() {
               <Zap className="w-4 h-4 text-amber-600" />
             </div>
             <div>
-              <p className="text-[18px] font-extrabold text-slate-800 leading-none">3s</p>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Avg Match</p>
+              <p className="text-[18px] font-extrabold text-slate-800 leading-none">{stats.matched_count}</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Matched</p>
             </div>
           </div>
         </div>

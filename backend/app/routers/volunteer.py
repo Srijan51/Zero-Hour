@@ -38,10 +38,22 @@ async def process_voice_dispatch(
     db.add(volunteer)
     db.commit()
     db.refresh(volunteer)
+
+    print(f"\n{'='*60}")
+    print(f"🎤 Dispatch: \"{transcript}\"")
+    print(f"📋 Parsed: skills={volunteer.skills}, assets={volunteer.assets}, hours={volunteer.availability_hours}")
+    print(f"📍 Location: ({volunteer.lat}, {volunteer.lng})")
     
     # Run matching
     open_requests = db.query(NGORequest).filter(NGORequest.status == "open").all()
     top_matches = rank_requests(volunteer, open_requests)
+
+    for score, req in top_matches:
+        from app.services.matcher import _match_ratio
+        sr = _match_ratio(volunteer.skills, req.required_skills)
+        ar = _match_ratio(volunteer.assets, req.required_assets)
+        print(f"  → {req.ngo_name}: score={score:.1f}% | skills={sr:.2f} ({req.required_skills}) | assets={ar:.2f} ({req.required_assets})")
+    print(f"{'='*60}\n")
     
     # Structure response
     response_matches = []

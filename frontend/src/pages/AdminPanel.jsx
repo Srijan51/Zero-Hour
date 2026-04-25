@@ -292,8 +292,8 @@ export default function AdminPanel() {
   }
 
   return (
-    <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar px-4 py-6 pb-16 md:pb-6">
-      <div className="max-w-6xl mx-auto space-y-4">
+    <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white overflow-y-auto custom-scrollbar px-4 py-6 pb-16 md:pb-6 fade-in">
+      <div className="max-w-6xl mx-auto space-y-4 slide-up">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-extrabold text-slate-800">Admin Panel</h1>

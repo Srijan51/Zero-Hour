@@ -1,16 +1,26 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Dependencies
+node_modules/
 frontend/node_modules/
 backend/venv/
+backend/.venv/
+.venv/
 
 # Build and compiled files
+dist/
 frontend/dist/
+frontend/dev-dist/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Databases
 *.sqlite3
@@ -25,3 +35,6 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Editor files
+.vscode/
