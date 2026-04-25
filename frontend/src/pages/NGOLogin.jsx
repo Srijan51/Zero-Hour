@@ -169,6 +169,30 @@ export default function NGOLogin() {
   // Track live match data for matched requests
   const [matchDataMap, setMatchDataMap] = useState({});
 
+  const pickPreferredMatch = (matchList) => {
+    if (!Array.isArray(matchList) || matchList.length === 0) return null;
+
+    const statusPriority = {
+      pending_confirmation: 0,
+      on_site: 1,
+      nearby: 2,
+      en_route: 3,
+      pending: 4,
+      matched: 5,
+      completed: 6,
+      cancelled: 7,
+    };
+
+    const sorted = [...matchList].sort((a, b) => {
+      const aPriority = statusPriority[a.status] ?? 99;
+      const bPriority = statusPriority[b.status] ?? 99;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return (b.id || 0) - (a.id || 0);
+    });
+
+    return sorted[0] || null;
+  };
+
   useEffect(() => {
     if (!token) return;
 
@@ -178,7 +202,7 @@ export default function NGOLogin() {
       for (const req of activeRequests) {
         try {
           const res = await api.get(`/match/request/${req.id}`);
-          const activeMatch = res.data.find(m => m.status !== 'cancelled');
+          const activeMatch = pickPreferredMatch((res.data || []).filter(m => m.status !== 'cancelled'));
           if (activeMatch) {
             // Fetch live status for this match
             try {

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AdminAccount, NGOAccount, NGORegistration, NGORequest
+from app.models import AdminAccount, Match, NGOAccount, NGORegistration, NGORequest
 from app.routers.ngo import ACTIVE_TOKENS
 from app.schemas import (
     AdminLoginRequest,
@@ -110,7 +110,15 @@ def delete_ngo_account(ngo_id: int, db: Session = Depends(get_db), admin: AdminA
     if not ngo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NGO account not found")
 
-    db.query(NGORequest).filter(NGORequest.ngo_name == ngo.ngo_name).delete(synchronize_session=False)
+    ngo_request_ids = [
+        request_id
+        for (request_id,) in db.query(NGORequest.id).filter(NGORequest.ngo_name == ngo.ngo_name).all()
+    ]
+
+    if ngo_request_ids:
+        db.query(Match).filter(Match.request_id.in_(ngo_request_ids)).delete(synchronize_session=False)
+
+    db.query(NGORequest).filter(NGORequest.id.in_(ngo_request_ids)).delete(synchronize_session=False)
     db.query(NGORegistration).filter(NGORegistration.ngo_name == ngo.ngo_name).delete(synchronize_session=False)
 
     db.delete(ngo)

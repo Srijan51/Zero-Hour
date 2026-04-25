@@ -110,8 +110,13 @@ export default function Home() {
     try {
       let latestPosition = { lat: currentLat, lng: currentLng };
       try {
-        latestPosition = await getCurrentLocation();
-        setCurrentPosition(latestPosition);
+        // Don't block dispatch for long GPS waits; use last-known location if this is slow.
+        const quickFreshPosition = await Promise.race([
+          getCurrentLocation(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('location-timeout')), 1500)),
+        ]);
+        latestPosition = quickFreshPosition;
+        setCurrentPosition(quickFreshPosition);
       } catch {
         // Use last known position if fresh lookup fails.
       }

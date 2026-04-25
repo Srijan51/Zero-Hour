@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import api from '../services/api';
 import { Navigation, CheckCircle, MapPin, Phone, User, Clock, AlertTriangle, Loader2 } from 'lucide-react';
 
+const ACTIVE_MATCH_STORAGE_KEY = 'active_match_id';
+
 function buildDirectionsUrl(request, currentLat, currentLng) {
   const destinationText = request?.location_text?.trim();
   const destination = destinationText || `${request?.lat},${request?.lng}`;
@@ -122,7 +124,7 @@ function PhonePrompt({ onSubmit, onCancel }) {
 }
 
 // ─── Live Mission Tracking Panel ───────────────────────────────
-function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset }) {
+function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFinished }) {
   const [liveStatus, setLiveStatus] = useState(null);
   const [isDelaying, setIsDelaying] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -241,7 +243,13 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset }) {
             <p className="text-xs text-slate-400">Confirmed by the NGO. Thank you for your service.</p>
           </div>
         </div>
-        <button className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl shadow-md active:scale-95 transition-all" onClick={onReset}>
+        <button
+          className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl shadow-md active:scale-95 transition-all"
+          onClick={() => {
+            if (onMissionFinished) onMissionFinished();
+            onReset();
+          }}
+        >
           Done
         </button>
       </div>
@@ -357,6 +365,46 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
   const [showPhonePrompt, setShowPhonePrompt] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
 
+  const clearActiveMission = () => {
+    localStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
+  };
+
+  useEffect(() => {
+    const restoreActiveMission = async () => {
+      if (confirmedMatch) return;
+
+      const storedMatchId = localStorage.getItem(ACTIVE_MATCH_STORAGE_KEY);
+      if (!storedMatchId) return;
+
+      try {
+        const res = await api.get(`/match/${storedMatchId}/live`);
+        const live = res.data;
+
+        if (live.status === 'cancelled') {
+          clearActiveMission();
+          return;
+        }
+
+        setConfirmedMatch({
+          id: live.id,
+          request_id: live.request?.id,
+          volunteer_id: volunteerId || undefined,
+          score: 0,
+          status: live.status,
+          eta_minutes: live.eta_minutes,
+          eta_text: live.eta_text,
+          request: live.request,
+          volunteer_phone: live.volunteer_phone,
+          volunteer_name: live.volunteer_name,
+        });
+      } catch {
+        clearActiveMission();
+      }
+    };
+
+    restoreActiveMission();
+  }, [confirmedMatch, volunteerId]);
+
   const handleAcceptClick = (requestId) => {
     // Check if phone AND name already saved
     const savedPhone = localStorage.getItem('volunteer_phone');
@@ -379,6 +427,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         name: name || undefined,
       });
       setConfirmedMatch(res.data);
+      localStorage.setItem(ACTIVE_MATCH_STORAGE_KEY, String(res.data.id));
       setShowPhonePrompt(false);
     } catch (error) {
       console.error(error);
@@ -409,6 +458,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         matchData={confirmedMatch}
         routeUrl={routeUrl}
         onReset={onReset}
+        onMissionFinished={clearActiveMission}
       />
     );
   }

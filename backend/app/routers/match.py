@@ -325,7 +325,7 @@ def get_matches_for_request(request_id: int, db: Session = Depends(get_db)):
     matches = db.query(Match).filter(
         Match.request_id == request_id,
         Match.status != "cancelled",
-    ).all()
+    ).order_by(Match.id.desc()).all()
     results = []
     for m in matches:
         vol = m.volunteer
