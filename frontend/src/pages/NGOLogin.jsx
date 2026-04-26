@@ -13,6 +13,8 @@ const URGENCY_LABELS = {
   5: { label: 'Emergency', color: 'bg-rose-100 text-rose-600' },
 };
 
+const NGO_MATCH_CACHE_KEY = 'ngo_match_data_cache';
+
 export default function NGOLogin() {
   const [credentials, setCredentials] = useState({ identifier: '', password: '' });
   const [token, setToken] = useState(localStorage.getItem('ngoAuthToken') || '');
@@ -36,7 +38,6 @@ export default function NGOLogin() {
   const [showForm, setShowForm] = useState(false);
   const [pendingDeleteRequestId, setPendingDeleteRequestId] = useState(null);
   const seenDelayByRequestRef = useRef({});
-  const delayBaselineReadyRef = useRef(false);
 
   // Get accurate browser location for the NGO form
   useEffect(() => {
@@ -129,13 +130,14 @@ export default function NGOLogin() {
   const handleLogout = () => {
     localStorage.removeItem('ngoAuthToken');
     localStorage.removeItem('ngoName');
+    localStorage.removeItem(NGO_MATCH_CACHE_KEY);
     setToken('');
     setAuthenticatedNgo('');
     setShowForm(false);
     setStatus('');
     setRequests([]);
+    setMatchDataMap({});
     seenDelayByRequestRef.current = {};
-    delayBaselineReadyRef.current = false;
   };
 
   const handleSubmit = async (e) => {
@@ -172,7 +174,22 @@ export default function NGOLogin() {
   const completedCount = requests.filter(r => r.status === 'completed').length;
 
   // Track live match data for matched requests
-  const [matchDataMap, setMatchDataMap] = useState({});
+  const [matchDataMap, setMatchDataMap] = useState(() => {
+    try {
+      const raw = localStorage.getItem(NGO_MATCH_CACHE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NGO_MATCH_CACHE_KEY, JSON.stringify(matchDataMap));
+    } catch {
+      // ignore storage errors
+    }
+  }, [matchDataMap]);
 
   const pickPreferredMatch = (matchList) => {
     if (!Array.isArray(matchList) || matchList.length === 0) return null;
@@ -217,12 +234,10 @@ export default function NGOLogin() {
               if (delayAt) {
                 const lastSeen = seenDelayByRequestRef.current[req.id];
                 if (lastSeen !== delayAt) {
-                  if (delayBaselineReadyRef.current) {
-                    addToast(
-                      `Delay reported by ${liveRes?.data?.volunteer_name || activeMatch.volunteer_name || 'volunteer'} for ${req.task_description.slice(0, 36)}${req.task_description.length > 36 ? '...' : ''}`,
-                      'warning'
-                    );
-                  }
+                  addToast(
+                    `Delay reported by ${liveRes?.data?.volunteer_name || activeMatch.volunteer_name || 'volunteer'} for ${req.task_description.slice(0, 36)}${req.task_description.length > 36 ? '...' : ''}`,
+                    'warning'
+                  );
                   seenDelayByRequestRef.current[req.id] = delayAt;
                 }
               }
@@ -232,9 +247,6 @@ export default function NGOLogin() {
             }
           }
         } catch { /* ignore */ }
-      }
-      if (!delayBaselineReadyRef.current) {
-        delayBaselineReadyRef.current = true;
       }
       setMatchDataMap((prev) => {
         const next = { ...prev, ...updatedEntries };

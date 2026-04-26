@@ -15,6 +15,7 @@ function getStoredActiveMission() {
           match_id: Number(parsed.match_id),
           volunteer_id: parsed.volunteer_id != null ? Number(parsed.volunteer_id) : null,
           request_id: parsed.request_id != null ? Number(parsed.request_id) : null,
+          score: parsed.score != null ? Number(parsed.score) : null,
         };
       }
     } catch {
@@ -396,10 +397,16 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
   const [confirmedMatch, setConfirmedMatch] = useState(null);
   const [showPhonePrompt, setShowPhonePrompt] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [isRestoringMission, setIsRestoringMission] = useState(false);
 
   const clearActiveMission = () => {
     localStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
     localStorage.removeItem(ACTIVE_MISSION_STORAGE_KEY);
+  };
+
+  const clearMissionAndResetPanel = () => {
+    clearActiveMission();
+    if (onReset) onReset();
   };
 
   useEffect(() => {
@@ -409,18 +416,16 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
       const storedMission = getStoredActiveMission();
       if (!storedMission) return;
 
-      const availableRequestIds = new Set((matches || []).map((m) => Number(m.id)));
-      if (storedMission.request_id && !availableRequestIds.has(storedMission.request_id)) {
-        clearActiveMission();
-        return;
-      }
+      setIsRestoringMission(true);
+
+      
 
       if (
         volunteerId &&
         storedMission.volunteer_id &&
         Number(volunteerId) !== Number(storedMission.volunteer_id)
       ) {
-        clearActiveMission();
+        clearMissionAndResetPanel();
         return;
       }
 
@@ -428,8 +433,21 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         const res = await api.get(`/match/${storedMission.match_id}/live`);
         const live = res.data;
 
+        let restoredScore = storedMission.score != null ? storedMission.score : null;
+        if (restoredScore == null && live.request?.id) {
+          try {
+            const matchesRes = await api.get(`/match/request/${live.request.id}`);
+            const exactMatch = (matchesRes.data || []).find((m) => Number(m.id) === Number(live.id));
+            if (exactMatch && Number.isFinite(Number(exactMatch.score))) {
+              restoredScore = Number(exactMatch.score);
+            }
+          } catch {
+            // Keep fallback score when request-level lookup fails.
+          }
+        }
+
         if (live.status === 'cancelled' || live.status === 'completed') {
-          clearActiveMission();
+          clearMissionAndResetPanel();
           return;
         }
 
@@ -437,21 +455,24 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
           id: live.id,
           request_id: live.request?.id,
           volunteer_id: volunteerId || undefined,
-          score: 0,
+          score: restoredScore != null ? restoredScore : 0,
           status: live.status,
           eta_minutes: live.eta_minutes,
           eta_text: live.eta_text,
           request: live.request,
           volunteer_phone: live.volunteer_phone,
           volunteer_name: live.volunteer_name,
+          delay_notified_at: live.delay_notified_at,
         });
       } catch {
-        clearActiveMission();
+        clearMissionAndResetPanel();
+      } finally {
+        setIsRestoringMission(false);
       }
     };
 
     restoreActiveMission();
-  }, [confirmedMatch, volunteerId, matches]);
+  }, [confirmedMatch, volunteerId, onReset]);
 
   const handleAcceptClick = (requestId) => {
     // Always show the identity panel; it can be prefilled from localStorage.
@@ -473,6 +494,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         match_id: res.data.id,
         volunteer_id: res.data.volunteer_id,
         request_id: res.data.request_id,
+        score: res.data.score,
       }));
       setShowPhonePrompt(false);
     } catch (error) {
@@ -506,6 +528,16 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         onReset={onReset}
         onMissionFinished={clearActiveMission}
       />
+    );
+  }
+
+  const hasStoredMission = Boolean(getStoredActiveMission());
+  if (isRestoringMission && hasStoredMission && (!matches || matches.length === 0)) {
+    return (
+      <div className="p-8 glass-panel rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col items-center justify-center min-h-[240px] slide-up">
+        <Loader2 className="w-7 h-7 text-primary animate-spin mb-3" />
+        <p className="text-sm font-semibold text-slate-600">Restoring active mission...</p>
+      </div>
     );
   }
 
