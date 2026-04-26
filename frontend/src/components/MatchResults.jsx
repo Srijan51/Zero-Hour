@@ -3,6 +3,33 @@ import api from '../services/api';
 import { Navigation, CheckCircle, MapPin, Phone, User, Clock, AlertTriangle, Loader2 } from 'lucide-react';
 
 const ACTIVE_MATCH_STORAGE_KEY = 'active_match_id';
+const ACTIVE_MISSION_STORAGE_KEY = 'active_mission';
+
+function getStoredActiveMission() {
+  const rawMission = localStorage.getItem(ACTIVE_MISSION_STORAGE_KEY);
+  if (rawMission) {
+    try {
+      const parsed = JSON.parse(rawMission);
+      if (parsed && Number.isFinite(Number(parsed.match_id))) {
+        return {
+          match_id: Number(parsed.match_id),
+          volunteer_id: parsed.volunteer_id != null ? Number(parsed.volunteer_id) : null,
+          request_id: parsed.request_id != null ? Number(parsed.request_id) : null,
+        };
+      }
+    } catch {
+      // ignore malformed legacy payload
+    }
+  }
+
+  // Backward compatibility for old localStorage format.
+  const legacyMatchId = localStorage.getItem(ACTIVE_MATCH_STORAGE_KEY);
+  if (legacyMatchId && Number.isFinite(Number(legacyMatchId))) {
+    return { match_id: Number(legacyMatchId), volunteer_id: null, request_id: null };
+  }
+
+  return null;
+}
 
 function buildDirectionsUrl(request, currentLat, currentLng) {
   const destinationText = request?.location_text?.trim();
@@ -170,6 +197,11 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
       if (statusIntervalRef.current) clearInterval(statusIntervalRef.current);
     };
   }, [matchId]);
+
+  useEffect(() => {
+    const alreadyDelayed = Boolean(liveStatus?.delay_notified_at || matchData?.delay_notified_at);
+    setDelayNotified(alreadyDelayed);
+  }, [liveStatus?.delay_notified_at, matchData?.delay_notified_at]);
 
   const handleDelay = async () => {
     setIsDelaying(true);
@@ -367,20 +399,36 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
 
   const clearActiveMission = () => {
     localStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
+    localStorage.removeItem(ACTIVE_MISSION_STORAGE_KEY);
   };
 
   useEffect(() => {
     const restoreActiveMission = async () => {
       if (confirmedMatch) return;
 
-      const storedMatchId = localStorage.getItem(ACTIVE_MATCH_STORAGE_KEY);
-      if (!storedMatchId) return;
+      const storedMission = getStoredActiveMission();
+      if (!storedMission) return;
+
+      const availableRequestIds = new Set((matches || []).map((m) => Number(m.id)));
+      if (storedMission.request_id && !availableRequestIds.has(storedMission.request_id)) {
+        clearActiveMission();
+        return;
+      }
+
+      if (
+        volunteerId &&
+        storedMission.volunteer_id &&
+        Number(volunteerId) !== Number(storedMission.volunteer_id)
+      ) {
+        clearActiveMission();
+        return;
+      }
 
       try {
-        const res = await api.get(`/match/${storedMatchId}/live`);
+        const res = await api.get(`/match/${storedMission.match_id}/live`);
         const live = res.data;
 
-        if (live.status === 'cancelled') {
+        if (live.status === 'cancelled' || live.status === 'completed') {
           clearActiveMission();
           return;
         }
@@ -403,19 +451,12 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
     };
 
     restoreActiveMission();
-  }, [confirmedMatch, volunteerId]);
+  }, [confirmedMatch, volunteerId, matches]);
 
   const handleAcceptClick = (requestId) => {
-    // Check if phone AND name already saved
-    const savedPhone = localStorage.getItem('volunteer_phone');
-    const savedName = localStorage.getItem('volunteer_name');
-    if (savedPhone && savedName) {
-      // Already have identity — confirm directly
-      confirmMatch(requestId, savedPhone, savedName);
-    } else {
-      setSelectedRequestId(requestId);
-      setShowPhonePrompt(true);
-    }
+    // Always show the identity panel; it can be prefilled from localStorage.
+    setSelectedRequestId(requestId);
+    setShowPhonePrompt(true);
   };
 
   const confirmMatch = async (requestId, phone, name) => {
@@ -428,6 +469,11 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
       });
       setConfirmedMatch(res.data);
       localStorage.setItem(ACTIVE_MATCH_STORAGE_KEY, String(res.data.id));
+      localStorage.setItem(ACTIVE_MISSION_STORAGE_KEY, JSON.stringify({
+        match_id: res.data.id,
+        volunteer_id: res.data.volunteer_id,
+        request_id: res.data.request_id,
+      }));
       setShowPhonePrompt(false);
     } catch (error) {
       console.error(error);

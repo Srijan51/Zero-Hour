@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Lock, Navigation, Phone, User, RotateCcw, XCircle, Trash2 } from 'lucide-react';
 import api from '../services/api';
@@ -35,6 +35,8 @@ export default function NGOLogin() {
   const [requests, setRequests] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [pendingDeleteRequestId, setPendingDeleteRequestId] = useState(null);
+  const seenDelayByRequestRef = useRef({});
+  const delayBaselineReadyRef = useRef(false);
 
   // Get accurate browser location for the NGO form
   useEffect(() => {
@@ -132,6 +134,8 @@ export default function NGOLogin() {
     setShowForm(false);
     setStatus('');
     setRequests([]);
+    seenDelayByRequestRef.current = {};
+    delayBaselineReadyRef.current = false;
   };
 
   const handleSubmit = async (e) => {
@@ -199,7 +203,8 @@ export default function NGOLogin() {
 
     const fetchMatchData = async () => {
       const activeRequests = requests.filter(r => ['matched', 'pending_confirmation'].includes(r.status));
-      const newMap = {};
+      const activeRequestIds = new Set(activeRequests.map((req) => req.id));
+      const updatedEntries = {};
       for (const req of activeRequests) {
         try {
           const res = await api.get(`/match/request/${req.id}`);
@@ -208,14 +213,38 @@ export default function NGOLogin() {
             // Fetch live status for this match
             try {
               const liveRes = await api.get(`/match/${activeMatch.id}/live`);
-              newMap[req.id] = { ...activeMatch, live: liveRes.data };
+              const delayAt = liveRes?.data?.delay_notified_at;
+              if (delayAt) {
+                const lastSeen = seenDelayByRequestRef.current[req.id];
+                if (lastSeen !== delayAt) {
+                  if (delayBaselineReadyRef.current) {
+                    addToast(
+                      `Delay reported by ${liveRes?.data?.volunteer_name || activeMatch.volunteer_name || 'volunteer'} for ${req.task_description.slice(0, 36)}${req.task_description.length > 36 ? '...' : ''}`,
+                      'warning'
+                    );
+                  }
+                  seenDelayByRequestRef.current[req.id] = delayAt;
+                }
+              }
+              updatedEntries[req.id] = { ...activeMatch, live: liveRes.data };
             } catch {
-              newMap[req.id] = activeMatch;
+              updatedEntries[req.id] = activeMatch;
             }
           }
         } catch { /* ignore */ }
       }
-      setMatchDataMap(newMap);
+      if (!delayBaselineReadyRef.current) {
+        delayBaselineReadyRef.current = true;
+      }
+      setMatchDataMap((prev) => {
+        const next = { ...prev, ...updatedEntries };
+        Object.keys(next).forEach((key) => {
+          if (!activeRequestIds.has(Number(key))) {
+            delete next[key];
+          }
+        });
+        return next;
+      });
     };
 
     if (requests.length > 0) {
@@ -223,7 +252,7 @@ export default function NGOLogin() {
       const interval = setInterval(fetchMatchData, 5000);
       return () => clearInterval(interval);
     }
-  }, [token, requests]);
+  }, [token, requests, addToast]);
 
   const handleNgoConfirm = async (matchId) => {
     try {

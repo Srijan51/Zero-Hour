@@ -5,6 +5,16 @@ import MatchResults from '../components/MatchResults';
 import api from '../services/api';
 import { Activity, Users, AlertTriangle, Zap } from 'lucide-react';
 
+const ACTIVE_MATCH_STORAGE_KEY = 'active_match_id';
+const ACTIVE_MISSION_STORAGE_KEY = 'active_mission';
+
+function hasStoredMission() {
+  return Boolean(
+    localStorage.getItem(ACTIVE_MISSION_STORAGE_KEY) ||
+    localStorage.getItem(ACTIVE_MATCH_STORAGE_KEY)
+  );
+}
+
 function getCurrentLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -32,6 +42,7 @@ function getCurrentLocation() {
 export default function Home() {
   const [matches, setMatches] = useState(null);
   const [volunteerId, setVolunteerId] = useState(null);
+  const [showMissionPanel, setShowMissionPanel] = useState(() => hasStoredMission());
   const [stats, setStats] = useState({ open_requests: 0, total_volunteers: 0, avg_eta_minutes: 0, matched_count: 0 });
   const [currentPosition, setCurrentPosition] = useState(null);
   const [locationReady, setLocationReady] = useState(false);
@@ -87,6 +98,21 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    const syncMissionPanel = () => {
+      setShowMissionPanel(hasStoredMission());
+    };
+
+    syncMissionPanel();
+    window.addEventListener('focus', syncMissionPanel);
+    window.addEventListener('storage', syncMissionPanel);
+
+    return () => {
+      window.removeEventListener('focus', syncMissionPanel);
+      window.removeEventListener('storage', syncMissionPanel);
+    };
+  }, []);
+
   // Fetch live stats from backend
   useEffect(() => {
     const fetchStats = async () => {
@@ -132,6 +158,7 @@ export default function Home() {
       
       setVolunteerId(response.data.volunteer.id);
       setMatches(response.data.matches);
+      setShowMissionPanel(true);
     } catch (error) {
       console.error("Dispatch error", error);
       alert("Failed to connect to backend. Make sure the server is running!");
@@ -203,13 +230,16 @@ export default function Home() {
       
       {/* Bottom/Side Panel */}
       <div className="mt-auto relative z-10 w-full pb-14 slide-up max-h-[70vh] overflow-y-auto custom-scrollbar md:mt-0 md:absolute md:right-8 md:top-8 md:w-[400px] md:max-h-[calc(100vh-4rem)] md:pb-0 md:rounded-[2.5rem] md:shadow-2xl md:bg-white/40 md:backdrop-blur-xl">
-        {matches ? (
+        {(matches || showMissionPanel) ? (
            <MatchResults 
-             matches={matches} 
+             matches={matches || []} 
              volunteerId={volunteerId}
              currentLat={currentLat}
              currentLng={currentLng}
-             onReset={() => setMatches(null)}
+             onReset={() => {
+               setMatches(null);
+               setShowMissionPanel(false);
+             }}
            />
         ) : (
            <VoiceCapture onTranscriptComplete={handleTranscript} />
