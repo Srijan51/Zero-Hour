@@ -14,6 +14,7 @@ def _ensure_ngo_certificate_columns() -> None:
         return
 
     inspector = inspect(engine)
+    
     ngo_account_columns = {column["name"] for column in inspector.get_columns("ngo_accounts")}
     ngo_registration_columns = {column["name"] for column in inspector.get_columns("ngo_registrations")}
     ngo_request_columns = {column["name"] for column in inspector.get_columns("ngo_requests")}
@@ -90,8 +91,22 @@ def _ensure_ngo_certificate_columns() -> None:
                 """
             ))
 
+def _ensure_volunteer_columns() -> None:
+    inspector = inspect(engine)
+    
+    
+    if "volunteers" in inspector.get_table_names():
+        volunteer_columns = {column["name"] for column in inspector.get_columns("volunteers")}
+        
+        with engine.begin() as connection:
+            if "phone" not in volunteer_columns:
+                connection.execute(text("ALTER TABLE volunteers ADD COLUMN phone VARCHAR"))
+            if "name" not in volunteer_columns:
+                connection.execute(text("ALTER TABLE volunteers ADD COLUMN name VARCHAR"))
 
 _ensure_ngo_certificate_columns()
+_ensure_volunteer_columns()
+
 
 app = FastAPI(title="Zero Hour API")
 
