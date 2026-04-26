@@ -120,22 +120,22 @@ Zero Hour connects crisis-affected communities with nearby volunteers in real ti
 ## Architecture
 
 ```
-┌──────────────┐     Voice/Text      ┌──────────────────┐    HTTP/REST     ┌─────────────────┐
-│   Volunteer  │ ──────────────────▶  │   React PWA      │ ──────────────▶  │  FastAPI Backend │
-│   (Browser)  │ ◀────GPS Pings────   │   (Vite + PWA)   │ ◀─────JSON────   │  (Python 3.11+)  │
+┌──────────────┐     Voice/Text       ┌──────────────────┐    HTTP/REST      ┌─────────────────┐
+│   Volunteer  │ ──────────────────▶ |   React PWA      │ ──────────────▶  │  FastAPI Backend│
+│   (Browser)  │ ◀────GPS Pings────  │   (Vite + PWA)   │ ◀─────JSON────   │  (Python 3.11+) │
 └──────────────┘                      └──────────────────┘                  └────────┬────────┘
                                              │                                       │
                                              │                              ┌────────▼────────┐
-                                      ┌──────▼──────┐                       │   SQLite / PG    │
-                                      │   NGO Panel  │                       │   Database       │
-                                      │  Admin Panel  │                       └────────┬────────┘
+                                      ┌──────▼──────┐                       │   SQLite / PG   │
+                                      │  NGO Panel  │                       │   Database      │
+                                      │ Admin Panel │                       └────────┬────────┘
                                       └─────────────┘                                │
                                                                             ┌────────▼────────┐
-                                                                            │  Google Gemini   │
-                                                                            │  (NLP Parsing)   │
+                                                                            │  Google Gemini  │
+                                                                            │  (NLP Parsing)  │
                                                                             ├─────────────────┤
-                                                                            │  Distance Matrix │
-                                                                            │  (ETA / Routing) │
+                                                                            │  Distance Matrix│
+                                                                            │  (ETA / Routing)│
                                                                             └─────────────────┘
 ```
 
