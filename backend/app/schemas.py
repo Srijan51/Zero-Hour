@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 
 class VolunteerBase(BaseModel):
     intent: Optional[str] = None
@@ -154,8 +155,8 @@ class MatchResponse(BaseModel):
     volunteer_lat: Optional[float] = None
     volunteer_lng: Optional[float] = None
     no_show_flagged: bool = False
-    arrived_at: Optional[str] = None
-    delay_notified_at: Optional[str] = None
+    arrived_at: Optional[datetime] = None
+    delay_notified_at: Optional[datetime] = None
     request: Optional[NGORequestResponse] = None
     volunteer_phone: Optional[str] = None
     volunteer_name: Optional[str] = None
@@ -175,7 +176,7 @@ class MatchLiveResponse(BaseModel):
     volunteer_lat: Optional[float] = None
     volunteer_lng: Optional[float] = None
     no_show_flagged: bool = False
-    delay_notified_at: Optional[str] = None
+    delay_notified_at: Optional[datetime] = None
     arrived: bool = False
     volunteer_phone: Optional[str] = None
     volunteer_name: Optional[str] = None
