@@ -509,6 +509,9 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
       setShowPhonePrompt(false);
     } catch (error) {
       console.error(error);
+      // Add an alert to show exactly what the backend is complaining about:
+      const errorMessage = error.response?.data?.detail || error.message || "Failed to connect to backend";
+      alert("Mission Accept Error: " + errorMessage);
     }
   };
 
