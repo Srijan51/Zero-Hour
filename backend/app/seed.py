@@ -2,6 +2,7 @@ import random
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, Base
 from app.models import NGORequest
+from app.routers.admin import ensure_default_admin  # <-- Added this import
 
 Base.metadata.create_all(bind=engine)
 
@@ -27,9 +28,19 @@ dummy_requests = [
 
 def seed_data():
     db = SessionLocal()
+    
+    # 1. ADDED THIS: Create the default admin if it doesn't exist
+    print("Checking for default admin account...")
+    try:
+        ensure_default_admin(db)
+        print("Admin account is ready.")
+    except Exception as e:
+        print(f"Error creating admin: {e}")
+
+    # 2. Existing NGO seeding logic
     existing = db.query(NGORequest).count()
     if existing > 0:
-        print("Data already seeded.")
+        print("NGO Request data already seeded.")
         return
     
     for i in range(20):
