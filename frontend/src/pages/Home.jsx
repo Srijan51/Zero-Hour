@@ -7,6 +7,7 @@ import { Activity, Users, AlertTriangle, Zap } from 'lucide-react';
 
 const ACTIVE_MATCH_STORAGE_KEY = 'active_match_id';
 const ACTIVE_MISSION_STORAGE_KEY = 'active_mission';
+const ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY = 'active_volunteer_token';
 
 function hasStoredMission() {
   return Boolean(
@@ -119,12 +120,8 @@ export default function Home() {
       try {
         const res = await api.get('/stats');
         setStats(res.data);
-      } catch (e) {
-        // Fallback: try request count only
-        try {
-          const res = await api.get('/ngo/requests');
-          setStats(prev => ({ ...prev, open_requests: res.data.length }));
-        } catch { /* ignore */ }
+      } catch {
+        // Keep previous values when stats endpoint is temporarily unavailable.
       }
     };
     fetchStats();
@@ -155,6 +152,10 @@ export default function Home() {
       const response = await api.post('/volunteer/dispatch', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
+
+      if (response.data?.volunteer_token) {
+        localStorage.setItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY, response.data.volunteer_token);
+      }
       
       setVolunteerId(response.data.volunteer.id);
       setMatches(response.data.matches);

@@ -4,6 +4,7 @@ import NGOLogin from './pages/NGOLogin';
 import NotFound from './pages/NotFound';
 import RegisterNGO from './pages/RegisterNGO';
 import AdminPanel from './pages/AdminPanel';
+import AdminRequestsHistory from './pages/AdminRequestsHistory';
 import BottomNav from './components/BottomNav';
 import InstallPrompt from './components/InstallPrompt';
 import OfflineBanner from './components/OfflineBanner';
@@ -28,6 +29,7 @@ function App() {
           <Route path="/ngo" element={<NGOLogin />} />
           <Route path="/register" element={<RegisterNGO />} />
           <Route path="/admin" element={<AdminPanel />} />
+          <Route path="/admin/requests" element={<AdminRequestsHistory />} />
           <Route path="*" element={<NotFound />} />
           </Routes>
         </div>

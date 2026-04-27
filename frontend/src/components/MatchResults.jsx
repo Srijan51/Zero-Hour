@@ -4,6 +4,7 @@ import { Navigation, CheckCircle, MapPin, Phone, User, Clock, AlertTriangle, Loa
 
 const ACTIVE_MATCH_STORAGE_KEY = 'active_match_id';
 const ACTIVE_MISSION_STORAGE_KEY = 'active_mission';
+const ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY = 'active_volunteer_token';
 
 function getStoredActiveMission() {
   const rawMission = localStorage.getItem(ACTIVE_MISSION_STORAGE_KEY);
@@ -159,13 +160,15 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
   const [delayNotified, setDelayNotified] = useState(false);
   const pingIntervalRef = useRef(null);
   const statusIntervalRef = useRef(null);
+  const volunteerToken = localStorage.getItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY) || '';
+  const volunteerHeaders = volunteerToken ? { 'X-Volunteer-Token': volunteerToken } : {};
 
   // Send GPS pings every 15 seconds
   useEffect(() => {
     const sendPing = async () => {
       try {
         const pos = await getCurrentLocation();
-        await api.post(`/match/${matchId}/checkin`, { lat: pos.lat, lng: pos.lng });
+        await api.post(`/match/${matchId}/checkin`, { lat: pos.lat, lng: pos.lng }, { headers: volunteerHeaders });
       } catch {
         // Silently fail — next ping will retry
       }
@@ -178,13 +181,13 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
     return () => {
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
     };
-  }, [matchId]);
+  }, [matchId, volunteerToken]);
 
   // Poll live status every 5 seconds
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await api.get(`/match/${matchId}/live`);
+        const res = await api.get(`/match/${matchId}/live`, { headers: volunteerHeaders });
         setLiveStatus(res.data);
       } catch {
         // ignore
@@ -197,7 +200,7 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
     return () => {
       if (statusIntervalRef.current) clearInterval(statusIntervalRef.current);
     };
-  }, [matchId]);
+  }, [matchId, volunteerToken]);
 
   useEffect(() => {
     const alreadyDelayed = Boolean(liveStatus?.delay_notified_at || matchData?.delay_notified_at);
@@ -207,7 +210,7 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
   const handleDelay = async () => {
     setIsDelaying(true);
     try {
-      await api.post(`/match/${matchId}/delay`);
+      await api.post(`/match/${matchId}/delay`, {}, { headers: volunteerHeaders });
       setDelayNotified(true);
     } catch { /* ignore */ }
     setIsDelaying(false);
@@ -216,7 +219,7 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
   const handleComplete = async () => {
     setIsCompleting(true);
     try {
-      await api.post(`/match/${matchId}/complete`);
+      await api.post(`/match/${matchId}/complete`, {}, { headers: volunteerHeaders });
       // Status will update on next poll
     } catch (err) {
       const detail = err?.response?.data?.detail || 'Cannot mark as complete yet';
@@ -402,6 +405,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
   const clearActiveMission = () => {
     localStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
     localStorage.removeItem(ACTIVE_MISSION_STORAGE_KEY);
+    localStorage.removeItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY);
   };
 
   const clearMissionAndResetPanel = () => {
@@ -430,14 +434,16 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
       }
 
       try {
-        const res = await api.get(`/match/${storedMission.match_id}/live`);
+        const volunteerToken = localStorage.getItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY) || '';
+        const headers = volunteerToken ? { 'X-Volunteer-Token': volunteerToken } : {};
+        const res = await api.get(`/match/${storedMission.match_id}/live`, { headers });
         const live = res.data;
 
         let restoredScore = storedMission.score != null ? storedMission.score : null;
         if (restoredScore == null && live.request?.id) {
           try {
-            const matchesRes = await api.get(`/match/request/${live.request.id}`);
-            const exactMatch = (matchesRes.data || []).find((m) => Number(m.id) === Number(live.id));
+            const volunteerMatchesRes = await api.get(`/match/volunteer/${storedMission.volunteer_id}`, { headers });
+            const exactMatch = (volunteerMatchesRes.data || []).find((m) => Number(m.id) === Number(live.id));
             if (exactMatch && Number.isFinite(Number(exactMatch.score))) {
               restoredScore = Number(exactMatch.score);
             }
@@ -487,6 +493,10 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         request_id: requestId,
         phone: phone || undefined,
         name: name || undefined,
+      }, {
+        headers: {
+          'X-Volunteer-Token': localStorage.getItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY) || '',
+        },
       });
       setConfirmedMatch(res.data);
       localStorage.setItem(ACTIVE_MATCH_STORAGE_KEY, String(res.data.id));

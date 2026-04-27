@@ -134,6 +134,24 @@ class AdminLoginResponse(BaseModel):
     token: str
     username: str
 
+
+class AdminNGORequestUpdate(BaseModel):
+    ngo_name: Optional[str] = None
+    task_description: Optional[str] = None
+    required_skills: Optional[List[str]] = None
+    required_assets: Optional[List[str]] = None
+    location_text: Optional[str] = None
+    google_maps_url: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    urgency: Optional[int] = None
+    status: Optional[str] = None
+
+
+class AdminNGORequestResponse(NGORequestResponse):
+    class Config:
+        from_attributes = True
+
 class MatchConfirm(BaseModel):
     volunteer_id: int
     request_id: int

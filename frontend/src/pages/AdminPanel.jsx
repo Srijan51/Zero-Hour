@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ShieldCheck, Trash2, UserPlus, CheckCircle2, XCircle, Pencil, Save, X, ArrowLeft, Info } from 'lucide-react';
+import { ShieldCheck, Trash2, UserPlus, CheckCircle2, XCircle, Pencil, Save, X, ArrowLeft, Info, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -302,9 +302,19 @@ export default function AdminPanel() {
             <h1 className="text-lg font-extrabold text-slate-800">Admin Panel</h1>
             <p className="text-xs text-slate-500">Signed in as {adminName}</p>
           </div>
-          <button onClick={handleLogout} className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:text-slate-900 hover:border-slate-300">
-            Logout
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => navigate('/admin/requests')}
+              className="inline-flex items-center space-x-1 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+            >
+              <History className="w-4 h-4" />
+              <span>Request History</span>
+            </button>
+            <button onClick={handleLogout} className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:text-slate-900 hover:border-slate-300">
+              Logout
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

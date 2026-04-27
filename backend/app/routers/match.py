@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Match, Volunteer, NGORequest
+from app.models import Match, NGOAccount, NGORequest, Volunteer
+from app.routers.ngo import ACTIVE_TOKENS
+from app.routers.volunteer import ACTIVE_VOLUNTEER_TOKENS
 from app.schemas import CheckinRequest, MatchConfirm, MatchLiveResponse, MatchResponse
 from app.services.matcher import compute_score, haversine
 from app.services.google_maps import get_driving_eta
@@ -15,6 +17,39 @@ router = APIRouter(prefix="/match", tags=["Match"])
 ARRIVAL_THRESHOLD_KM = 0.2
 # No-show: pings stopped for this many minutes
 NO_SHOW_PING_TIMEOUT_MIN = 5
+
+
+def _get_authenticated_ngo(authorization: str = Header(default=""), db: Session = Depends(get_db)) -> NGOAccount:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="NGO authentication required")
+
+    token = authorization.split(" ", 1)[1].strip()
+    ngo_id = ACTIVE_TOKENS.get(token)
+    if not ngo_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired NGO token")
+
+    ngo = db.query(NGOAccount).filter(NGOAccount.id == ngo_id, NGOAccount.is_active == True).first()
+    if not ngo:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired NGO token")
+    return ngo
+
+
+def _get_authenticated_volunteer_id(x_volunteer_token: str = Header(default="", alias="X-Volunteer-Token")) -> int:
+    token = (x_volunteer_token or "").strip()
+    volunteer_id = ACTIVE_VOLUNTEER_TOKENS.get(token)
+    if not volunteer_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Volunteer authentication required")
+    return volunteer_id
+
+
+def _ensure_ngo_owns_request(ngo: NGOAccount, request: NGORequest) -> None:
+    if request.ngo_name != ngo.ngo_name:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage your own requests")
+
+
+def _ensure_volunteer_owns_match(volunteer_id: int, match: Match) -> None:
+    if match.volunteer_id != volunteer_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage your own mission")
 
 
 def _check_no_show(match: Match) -> bool:
@@ -92,7 +127,14 @@ def _compute_live_state(match: Match, request: NGORequest):
 
 
 @router.post("/confirm", response_model=MatchResponse)
-def confirm_match(confirm: MatchConfirm, db: Session = Depends(get_db)):
+def confirm_match(
+    confirm: MatchConfirm,
+    db: Session = Depends(get_db),
+    volunteer_id: int = Depends(_get_authenticated_volunteer_id),
+):
+    if volunteer_id != confirm.volunteer_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Volunteer identity mismatch")
+
     vol = db.query(Volunteer).filter(Volunteer.id == confirm.volunteer_id).first()
     req = db.query(NGORequest).filter(NGORequest.id == confirm.request_id).first()
     
@@ -141,11 +183,17 @@ def confirm_match(confirm: MatchConfirm, db: Session = Depends(get_db)):
 
 
 @router.post("/{match_id}/checkin")
-def checkin(match_id: int, payload: CheckinRequest, db: Session = Depends(get_db)):
+def checkin(
+    match_id: int,
+    payload: CheckinRequest,
+    db: Session = Depends(get_db),
+    volunteer_id: int = Depends(_get_authenticated_volunteer_id),
+):
     """Receive a GPS ping from the volunteer. Updates position and detects arrival."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+    _ensure_volunteer_owns_match(volunteer_id, match)
 
     if match.status in ("completed", "cancelled"):
         return {"status": match.status, "arrived": match.arrived_at is not None}
@@ -183,11 +231,16 @@ def checkin(match_id: int, payload: CheckinRequest, db: Session = Depends(get_db
 
 
 @router.post("/{match_id}/delay")
-def notify_delay(match_id: int, db: Session = Depends(get_db)):
+def notify_delay(
+    match_id: int,
+    db: Session = Depends(get_db),
+    volunteer_id: int = Depends(_get_authenticated_volunteer_id),
+):
     """Volunteer taps 'I'm delayed' — stores timestamp for NGO visibility."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+    _ensure_volunteer_owns_match(volunteer_id, match)
 
     match.delay_notified_at = datetime.now(timezone.utc)
     db.commit()
@@ -197,11 +250,16 @@ def notify_delay(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{match_id}/complete")
-def volunteer_complete(match_id: int, db: Session = Depends(get_db)):
+def volunteer_complete(
+    match_id: int,
+    db: Session = Depends(get_db),
+    volunteer_id: int = Depends(_get_authenticated_volunteer_id),
+):
     """Volunteer marks task as done. Status → pending_confirmation. NGO must confirm."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+    _ensure_volunteer_owns_match(volunteer_id, match)
 
     if match.status in ("completed", "cancelled"):
         raise HTTPException(status_code=400, detail="Match already finalized")
@@ -221,61 +279,12 @@ def volunteer_complete(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{match_id}/ngo-confirm")
-def ngo_confirm_completion(match_id: int, db: Session = Depends(get_db)):
+def ngo_confirm_completion(
+    match_id: int,
+    db: Session = Depends(get_db),
+    ngo: NGOAccount = Depends(_get_authenticated_ngo),
+):
     """NGO confirms the volunteer actually helped. Finalizes the mission."""
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-
-    if match.status != "pending_confirmation":
-        raise HTTPException(status_code=400, detail="Match is not awaiting confirmation")
-
-    match.status = "completed"
-    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
-    if req:
-        req.status = "completed"
-    db.commit()
-
-    print(f"🎉 NGO confirmed completion for match {match_id}")
-    return {"ok": True, "status": "completed"}
-
-
-@router.post("/{match_id}/ngo-dispute")
-def ngo_dispute(match_id: int, db: Session = Depends(get_db)):
-    """NGO disputes completion — volunteer didn't actually help. Re-opens the request."""
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-
-    match.status = "cancelled"
-    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
-    if req:
-        req.status = "open"
-    db.commit()
-
-    print(f"❌ NGO disputed match {match_id} — request re-opened")
-    return {"ok": True, "status": "open"}
-
-
-@router.post("/{match_id}/rebroadcast")
-def rebroadcast(match_id: int, db: Session = Depends(get_db)):
-    """NGO cancels a no-show match and re-opens the request for other volunteers."""
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-
-    match.status = "cancelled"
-    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
-    if req:
-        req.status = "open"
-    db.commit()
-
-    print(f"📡 Re-broadcast: match {match_id} cancelled, request re-opened")
-    return {"ok": True, "status": "open"}
-
-
-@router.get("/{match_id}/live", response_model=MatchLiveResponse)
-def get_match_live_status(match_id: int, db: Session = Depends(get_db)):
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -283,6 +292,98 @@ def get_match_live_status(match_id: int, db: Session = Depends(get_db)):
     req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    _ensure_ngo_owns_request(ngo, req)
+
+    if match.status != "pending_confirmation":
+        raise HTTPException(status_code=400, detail="Match is not awaiting confirmation")
+
+    match.status = "completed"
+    req.status = "completed"
+    db.commit()
+
+    print(f"🎉 NGO confirmed completion for match {match_id}")
+    return {"ok": True, "status": "completed"}
+
+
+@router.post("/{match_id}/ngo-dispute")
+def ngo_dispute(
+    match_id: int,
+    db: Session = Depends(get_db),
+    ngo: NGOAccount = Depends(_get_authenticated_ngo),
+):
+    """NGO disputes completion — volunteer didn't actually help. Re-opens the request."""
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    _ensure_ngo_owns_request(ngo, req)
+
+    match.status = "cancelled"
+    req.status = "open"
+    db.commit()
+
+    print(f"❌ NGO disputed match {match_id} — request re-opened")
+    return {"ok": True, "status": "open"}
+
+
+@router.post("/{match_id}/rebroadcast")
+def rebroadcast(
+    match_id: int,
+    db: Session = Depends(get_db),
+    ngo: NGOAccount = Depends(_get_authenticated_ngo),
+):
+    """NGO cancels a no-show match and re-opens the request for other volunteers."""
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    _ensure_ngo_owns_request(ngo, req)
+
+    match.status = "cancelled"
+    req.status = "open"
+    db.commit()
+
+    print(f"📡 Re-broadcast: match {match_id} cancelled, request re-opened")
+    return {"ok": True, "status": "open"}
+
+
+@router.get("/{match_id}/live", response_model=MatchLiveResponse)
+def get_match_live_status(
+    match_id: int,
+    db: Session = Depends(get_db),
+    authorization: str = Header(default=""),
+    x_volunteer_token: str = Header(default="", alias="X-Volunteer-Token"),
+):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    ngo_authenticated = False
+    token = (authorization or "").strip()
+    if token.startswith("Bearer "):
+        ngo_token = token.split(" ", 1)[1].strip()
+        ngo_id = ACTIVE_TOKENS.get(ngo_token)
+        if ngo_id:
+            ngo = db.query(NGOAccount).filter(NGOAccount.id == ngo_id, NGOAccount.is_active == True).first()
+            if ngo and ngo.ngo_name == req.ngo_name:
+                ngo_authenticated = True
+
+    volunteer_token = (x_volunteer_token or "").strip()
+    volunteer_id = ACTIVE_VOLUNTEER_TOKENS.get(volunteer_token)
+    volunteer_authenticated = volunteer_id == match.volunteer_id
+
+    if not ngo_authenticated and not volunteer_authenticated:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access to live mission")
 
     # Check no-show (pings stopped)
     is_no_show = _check_no_show(match)
@@ -320,8 +421,17 @@ def get_match_live_status(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/request/{request_id}", response_model=List[MatchResponse])
-def get_matches_for_request(request_id: int, db: Session = Depends(get_db)):
+def get_matches_for_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    ngo: NGOAccount = Depends(_get_authenticated_ngo),
+):
     """Get all matches for a specific request (used by NGO dashboard)."""
+    req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    _ensure_ngo_owns_request(ngo, req)
+
     matches = db.query(Match).filter(
         Match.request_id == request_id,
         Match.status != "cancelled",
@@ -337,5 +447,11 @@ def get_matches_for_request(request_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/volunteer/{vol_id}", response_model=List[MatchResponse])
-def get_volunteer_matches(vol_id: int, db: Session = Depends(get_db)):
+def get_volunteer_matches(
+    vol_id: int,
+    db: Session = Depends(get_db),
+    volunteer_id: int = Depends(_get_authenticated_volunteer_id),
+):
+    if vol_id != volunteer_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view your own matches")
     return db.query(Match).filter(Match.volunteer_id == vol_id).all()

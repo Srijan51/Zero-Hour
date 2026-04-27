@@ -66,7 +66,7 @@ export default function NGOLogin() {
 
   const fetchRequests = async () => {
     try {
-      const res = await api.get('/ngo/requests');
+      const res = await api.get('/ngo/requests', { headers: authHeaders });
       setRequests(res.data);
     } catch (e) {
       console.error(e);
@@ -224,12 +224,12 @@ export default function NGOLogin() {
       const updatedEntries = {};
       for (const req of activeRequests) {
         try {
-          const res = await api.get(`/match/request/${req.id}`);
+          const res = await api.get(`/match/request/${req.id}`, { headers: authHeaders });
           const activeMatch = pickPreferredMatch((res.data || []).filter(m => m.status !== 'cancelled'));
           if (activeMatch) {
             // Fetch live status for this match
             try {
-              const liveRes = await api.get(`/match/${activeMatch.id}/live`);
+              const liveRes = await api.get(`/match/${activeMatch.id}/live`, { headers: authHeaders });
               const delayAt = liveRes?.data?.delay_notified_at;
               if (delayAt) {
                 const lastSeen = seenDelayByRequestRef.current[req.id];
@@ -268,7 +268,7 @@ export default function NGOLogin() {
 
   const handleNgoConfirm = async (matchId) => {
     try {
-      await api.post(`/match/${matchId}/ngo-confirm`);
+      await api.post(`/match/${matchId}/ngo-confirm`, {}, { headers: authHeaders });
       addToast('Mission confirmed as complete!', 'success');
       fetchRequests();
     } catch (err) {
@@ -278,7 +278,7 @@ export default function NGOLogin() {
 
   const handleNgoDispute = async (matchId) => {
     try {
-      await api.post(`/match/${matchId}/ngo-dispute`);
+      await api.post(`/match/${matchId}/ngo-dispute`, {}, { headers: authHeaders });
       addToast('Match disputed — request re-opened.', 'warning');
       fetchRequests();
     } catch (err) {
@@ -288,7 +288,7 @@ export default function NGOLogin() {
 
   const handleRebroadcast = async (matchId) => {
     try {
-      await api.post(`/match/${matchId}/rebroadcast`);
+      await api.post(`/match/${matchId}/rebroadcast`, {}, { headers: authHeaders });
       addToast('Request re-broadcasted for new volunteers.', 'info');
       fetchRequests();
     } catch (err) {
@@ -303,7 +303,7 @@ export default function NGOLogin() {
   const confirmDeleteRequest = async () => {
     if (!pendingDeleteRequestId) return;
     try {
-      await api.delete(`/ngo/requests/${pendingDeleteRequestId}`);
+      await api.delete(`/ngo/requests/${pendingDeleteRequestId}`, { headers: authHeaders });
       addToast('Request deleted successfully.', 'success');
       setPendingDeleteRequestId(null);
       fetchRequests();

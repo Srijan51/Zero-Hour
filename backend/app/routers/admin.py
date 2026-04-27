@@ -1,5 +1,6 @@
 import os
 import secrets
+from urllib.parse import quote_plus
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -9,6 +10,8 @@ from app.database import get_db
 from app.models import AdminAccount, Match, NGOAccount, NGORegistration, NGORequest
 from app.routers.ngo import ACTIVE_TOKENS
 from app.schemas import (
+    AdminNGORequestResponse,
+    AdminNGORequestUpdate,
     AdminLoginRequest,
     AdminLoginResponse,
     NGOAccountCreateByAdmin,
@@ -236,3 +239,78 @@ def reject_registration(registration_id: int, db: Session = Depends(get_db), adm
     db.commit()
     db.refresh(registration)
     return registration
+
+
+@router.get("/requests", response_model=List[AdminNGORequestResponse])
+def list_all_requests(
+    db: Session = Depends(get_db),
+    admin: AdminAccount = Depends(_get_authenticated_admin),
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    ngo_name: Optional[str] = Query(default=None),
+):
+    query = db.query(NGORequest)
+    if status_filter:
+        query = query.filter(NGORequest.status == status_filter)
+    if ngo_name:
+        query = query.filter(NGORequest.ngo_name.ilike(f"%{ngo_name.strip()}%"))
+    return query.order_by(NGORequest.id.desc()).all()
+
+
+@router.put("/requests/{request_id}", response_model=AdminNGORequestResponse)
+def update_request_by_admin(
+    request_id: int,
+    payload: AdminNGORequestUpdate,
+    db: Session = Depends(get_db),
+    admin: AdminAccount = Depends(_get_authenticated_admin),
+):
+    req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+
+    if "ngo_name" in updates:
+        req.ngo_name = updates["ngo_name"]
+    if "task_description" in updates:
+        req.task_description = updates["task_description"]
+    if "required_skills" in updates:
+        req.required_skills = updates["required_skills"]
+    if "required_assets" in updates:
+        req.required_assets = updates["required_assets"]
+    if "lat" in updates:
+        req.lat = updates["lat"]
+    if "lng" in updates:
+        req.lng = updates["lng"]
+    if "urgency" in updates:
+        req.urgency = updates["urgency"]
+    if "status" in updates:
+        req.status = updates["status"]
+
+    if "location_text" in updates:
+        req.location_text = updates["location_text"]
+
+    if "google_maps_url" in updates:
+        req.google_maps_url = updates["google_maps_url"]
+    elif "location_text" in updates and updates.get("location_text"):
+        req.google_maps_url = f"https://www.google.com/maps/search/?api=1&query={quote_plus(updates['location_text'])}"
+
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+@router.delete("/requests/{request_id}")
+def delete_request_by_admin(
+    request_id: int,
+    db: Session = Depends(get_db),
+    admin: AdminAccount = Depends(_get_authenticated_admin),
+):
+    req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    db.query(Match).filter(Match.request_id == request_id).delete(synchronize_session=False)
+    db.delete(req)
+    db.commit()
+
+    return {"message": "Request deleted", "request_id": request_id}

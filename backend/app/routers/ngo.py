@@ -105,17 +105,24 @@ def create_ngo_request(req: NGORequestCreate, db: Session = Depends(get_db), ngo
     return db_req
 
 @router.get("/requests", response_model=List[NGORequestResponse])
-def get_all_requests(db: Session = Depends(get_db)):
+def get_all_requests(db: Session = Depends(get_db), ngo: NGOAccount = Depends(_get_authenticated_ngo)):
     return db.query(NGORequest).filter(
+        NGORequest.ngo_name == ngo.ngo_name,
         NGORequest.status.in_(["open", "matched", "pending_confirmation"])
     ).all()
 
 
 @router.delete("/requests/{request_id}")
-def delete_request(request_id: int, db: Session = Depends(get_db)):
+def delete_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    ngo: NGOAccount = Depends(_get_authenticated_ngo),
+):
     req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    if req.ngo_name != ngo.ngo_name:
+        raise HTTPException(status_code=403, detail="You can only delete your own requests")
 
     # Cancel associated matches
     from app.models import Match
