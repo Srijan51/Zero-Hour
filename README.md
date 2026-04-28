@@ -227,59 +227,59 @@ npm run dev
 |--------|----------|-------------|
 | POST | `/volunteer/dispatch` | Submit voice transcript + GPS → get matched requests |
 
-### Match & Tracking
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/match/confirm` | Accept a mission (with phone/name) |
-| POST | `/match/{id}/checkin` | Send GPS ping (every 15s) |
-| POST | `/match/{id}/delay` | Notify "I'm delayed" |
-| POST | `/match/{id}/complete` | Mark task done (arrival-gated) |
-| POST | `/match/{id}/ngo-confirm` | NGO confirms completion |
-| POST | `/match/{id}/ngo-dispute` | NGO disputes → re-opens request |
-| POST | `/match/{id}/rebroadcast` | Cancel no-show, re-open request |
-| POST | `/api/rebroadcast` | Frontend rebroadcast helper for reopening a request |
-| GET | `/match/{id}/live` | Live tracking status + no-show flag |
-| GET | `/match/request/{id}` | Get matches for a request |
-| GET | `/match/volunteer/{id}` | Get matches for a volunteer |
+### 4. Hosting (production)
 
-### NGO
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/ngo/register` | Submit NGO registration |
-| POST | `/ngo/login` | NGO authentication |
-| GET | `/ngo/me` | Get authenticated NGO info |
-| POST | `/ngo/requests` | Broadcast a new crisis request |
-| GET | `/ngo/requests` | Get all active requests |
+This repository is set up to serve the frontend using Firebase Hosting and to run the backend as a containerized service (recommended: Cloud Run). The steps below show a common production workflow.
 
-### Admin
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/admin/login` | Admin authentication |
-| GET | `/admin/registrations` | List pending NGO registrations |
-| POST | `/admin/registrations/{id}/approve` | Approve NGO |
-| POST | `/admin/registrations/{id}/reject` | Reject NGO |
-| GET | `/admin/ngos` | List all NGO accounts |
-| POST | `/admin/ngos` | Create NGO account directly |
-| PUT | `/admin/ngos/{id}` | Edit NGO account |
-| DELETE | `/admin/ngos/{id}` | Delete NGO account |
+Frontend (Firebase Hosting)
 
-### Platform
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/stats` | Live platform statistics (real data) |
-| GET | `/` | Health check |
+1. Build the static site:
 
----
+```bash
+cd frontend
+npm run build
+```
 
-## Data Storage
+2. Initialize hosting (one-time) and choose `dist` as the public directory:
 
-| Table | Purpose |
-|-------|---------|
-| `volunteers` | Volunteer records with skills, assets, GPS, phone, name |
-| `ngo_requests` | Crisis requests with location, urgency, status lifecycle |
-| `matches` | Volunteer-request pairings with tracking, no-show, arrival |
-| `ngo_accounts` | Approved NGO accounts with hashed passwords |
-| `ngo_registrations` | Pending/approved/rejected NGO registration requests |
+```bash
+firebase init hosting
+```
+
+3. Deploy:
+
+```bash
+firebase deploy --only hosting
+```
+
+Notes:
+- The `frontend/firebase.json` file contains a rewrite rule so the SPA works with client-side routing.
+- Use `frontend/.firebaserc` to store a project alias for CI/CD.
+
+Backend (Cloud Run - recommended)
+
+1. Build a container image (example using Google Cloud Build):
+
+```bash
+# From repository root
+gcloud builds submit --tag gcr.io/PROJECT_ID/zero-hour-backend:latest backend
+```
+
+2. Deploy to Cloud Run:
+
+```bash
+gcloud run deploy zero-hour-backend \
+  --image gcr.io/PROJECT_ID/zero-hour-backend:latest \
+  --platform managed --region REGION --allow-unauthenticated --port 8080
+```
+
+3. Set environment variables in Cloud Run (e.g., `GOOGLE_MAPS_API_KEY`, `ADMIN_PASSWORD`).
+
+If you prefer another hosting provider (App Service, EC2, Railway, Fly.io), deploy the container with equivalent configuration.
+
+Connecting frontend to backend
+
+By default the frontend expects the API at the same origin. For production, set `FRONTEND_API_BASE_URL` in the built app (or configure a reverse proxy). When deploying to Firebase Hosting you can proxy API calls to your backend domain using `firebase.json` rewrites or configure the frontend to use the absolute Cloud Run URL.
 | `admin_accounts` | Admin users with hashed passwords |
 
 ### Request Status Lifecycle
