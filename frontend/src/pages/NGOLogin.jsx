@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Lock, Navigation, Phone, User, RotateCcw, XCircle, Trash2 } from 'lucide-react';
+import { Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Navigation, Phone, User, RotateCcw, XCircle, Trash2 } from 'lucide-react';
 import api from '../services/api';
 import PlacesAutocomplete from '../components/PlacesAutocomplete';
 import { ToastContainer, useToasts } from '../components/Toast';
@@ -326,9 +326,11 @@ export default function NGOLogin() {
         <ToastContainer toasts={toasts} removeToast={removeToast} />
         <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-6 slide-up">
           <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/30">
-              <Lock className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="/logo.jpeg"
+              alt="Zero Hour"
+              className="w-12 h-12 rounded-xl object-cover shadow-lg shadow-primary/20 border border-slate-100"
+            />
             <div>
               <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">NGO Command Login</h1>
               <p className="text-slate-500 text-xs font-medium">Authenticate to access broadcast controls</p>
@@ -395,9 +397,11 @@ export default function NGOLogin() {
         <div className="relative z-10 md:max-w-6xl md:mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/30">
-                <Shield className="w-5 h-5 text-white" />
-              </div>
+              <img
+                src="/logo.jpeg"
+                alt="Zero Hour"
+                className="w-11 h-11 rounded-xl object-cover shadow-lg shadow-primary/20 border border-white/20 bg-white"
+              />
               <div>
                 <h1 className="text-xl font-extrabold text-white tracking-tight">NGO Command</h1>
                 <p className="text-slate-400 text-xs font-medium">{authenticatedNgo}</p>
@@ -542,15 +546,18 @@ export default function NGOLogin() {
 
       {/* Live Requests Feed */}
       <div className="flex-1 px-4 md:px-0 mt-6 md:mt-0 md:col-span-7 min-h-0 flex flex-col pb-4 md:pb-0">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-[0.15em]">Live Feed ({requests.length})</h2>
-          <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-medium">
+        <div className="flex items-center justify-between mb-3 rounded-2xl bg-white/70 border border-white/70 shadow-sm px-4 py-3 backdrop-blur">
+          <div>
+            <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-[0.15em]">Live Feed ({requests.length})</h2>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Active request operations</p>
+          </div>
+          <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-bold bg-slate-50 border border-slate-100 rounded-full px-2.5 py-1.5">
             <Clock className="w-3 h-3" />
             <span>Auto-refresh 5s</span>
           </div>
         </div>
         
-        <div className="space-y-2.5 pb-4 md:overflow-y-auto md:custom-scrollbar md:pr-2 flex-1 min-h-0">
+        <div className="space-y-3 pb-4 md:overflow-y-auto md:custom-scrollbar md:pr-2 flex-1 min-h-0">
           {requests.length === 0 && (
             <div className="text-center py-12 text-slate-300">
               <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -566,48 +573,51 @@ export default function NGOLogin() {
             const isCompleted = req.status === 'completed';
 
             return (
-            <div key={req.id} className={`p-4 bg-white rounded-xl shadow-sm border hover:shadow-md transition-all duration-200 group ${
-              live?.no_show_flagged ? 'border-rose-200 bg-rose-50/30' : isPending ? 'border-amber-200 bg-amber-50/30' : 'border-slate-50'
+            <div key={req.id} className={`relative overflow-hidden p-4 bg-white/95 rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] border hover:shadow-[0_16px_42px_rgba(15,23,42,0.1)] transition-all duration-200 group ${
+              live?.no_show_flagged ? 'border-rose-200 bg-rose-50/40' : isPending ? 'border-amber-200 bg-amber-50/40' : 'border-white/70'
             }`} style={{ animationDelay: `${idx * 0.05}s` }}>
+              <div className={`absolute inset-y-0 left-0 w-1 ${
+                live?.no_show_flagged ? 'bg-rose-400' : isPending ? 'bg-amber-400' : isMatched ? 'bg-emerald-400' : 'bg-blue-400'
+              }`} />
               <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 pl-2">
                   <div className="flex items-center space-x-2 mb-1">
-                    <h3 className="font-bold text-slate-800 text-sm truncate">{req.ngo_name}</h3>
+                    <h3 className="font-extrabold text-slate-800 text-sm truncate">{req.ngo_name}</h3>
                     {req.urgency >= 4 && (
                       <span className="flex-shrink-0 w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span>
                     )}
                   </div>
-                  <p className="text-slate-500 text-xs mt-0.5 line-clamp-1">{req.task_description}</p>
+                  <p className="text-slate-600 text-xs mt-0.5 leading-relaxed line-clamp-2">{req.task_description}</p>
                   {req.location_text && (
-                    <p className="text-slate-400 text-[11px] mt-1">Location: {req.location_text}</p>
+                    <p className="text-slate-400 text-[11px] mt-1.5 font-medium">Location: {req.location_text}</p>
                   )}
-                  <div className="flex items-center space-x-2 mt-2">
+                  <div className="flex items-center flex-wrap gap-1.5 mt-2.5">
                     {req.required_skills?.slice(0, 2).map(s => (
-                      <span key={s} className="text-[9px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">{s}</span>
+                      <span key={s} className="text-[9px] font-bold text-slate-400 bg-slate-50 border border-slate-100 px-2 py-1 rounded-full">{s}</span>
                     ))}
                     {req.required_assets?.slice(0, 1).map(a => (
-                      <span key={a} className="text-[9px] font-semibold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">{a}</span>
+                      <span key={a} className="text-[9px] font-bold text-amber-500 bg-amber-50 border border-amber-100 px-2 py-1 rounded-full">{a}</span>
                     ))}
                   </div>
                 </div>
                 <div className="flex-shrink-0 ml-3">
                   {isCompleted ? (
-                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-green-50 text-green-600 text-[10px] font-bold rounded-lg border border-green-100">
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-green-50 text-green-600 text-[10px] font-bold rounded-full border border-green-100 shadow-sm">
                       <CheckCircle2 className="w-3 h-3" />
                       <span>Completed</span>
                     </span>
                   ) : isPending ? (
-                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-amber-50 text-amber-600 text-[10px] font-bold rounded-lg border border-amber-100 animate-pulse">
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-amber-50 text-amber-600 text-[10px] font-bold rounded-full border border-amber-100 shadow-sm animate-pulse">
                       <Clock className="w-3 h-3" />
                       <span>Confirm?</span>
                     </span>
                   ) : isMatched ? (
-                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-bold rounded-lg border border-emerald-100">
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-bold rounded-full border border-emerald-100 shadow-sm">
                       <CheckCircle2 className="w-3 h-3" />
                       <span>Matched</span>
                     </span>
                   ) : (
-                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-blue-50 text-blue-500 text-[10px] font-bold rounded-lg border border-blue-100">
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-blue-50 text-blue-500 text-[10px] font-bold rounded-full border border-blue-100 shadow-sm">
                       <Radio className="w-3 h-3 animate-pulse" />
                       <span>Open</span>
                     </span>
@@ -617,11 +627,11 @@ export default function NGOLogin() {
 
               {/* Volunteer info + live tracking for matched requests */}
               {isMatched && (
-                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
+                <div className="mt-4 ml-2 p-3 rounded-2xl bg-slate-50/80 border border-slate-100 space-y-3">
                   {/* Volunteer identity */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center border border-primary/10">
                         <User className="w-3.5 h-3.5 text-primary" />
                       </div>
                       <div>
@@ -634,7 +644,7 @@ export default function NGOLogin() {
                         )}
                       </div>
                     </div>
-                    <div className={`px-2 py-1 rounded-full text-[9px] font-bold tracking-wide ${
+                    <div className={`px-2.5 py-1 rounded-full text-[9px] font-bold tracking-wide border ${
                       live?.arrived ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
                     }`}>
                       {live?.arrived ? '📍 ON SITE' : '🚗 EN ROUTE'}
@@ -643,11 +653,11 @@ export default function NGOLogin() {
 
                   {/* Progress bar */}
                   <div>
-                    <div className="flex justify-between text-[9px] font-bold text-slate-300 mb-1">
-                      <span>{live?.status_message || 'Refreshing live progress...'}</span>
-                      <span>{Math.round(live?.progress_percent || 0)}%</span>
+                    <div className="flex justify-between text-[9px] font-bold text-slate-400 mb-1.5">
+                      <span className="truncate pr-2">{live?.status_message || 'Refreshing live progress...'}</span>
+                      <span className="text-slate-500">{Math.round(live?.progress_percent || 0)}%</span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-slate-100">
                       <div
                         className="h-full rounded-full transition-all duration-1000 ease-out bg-gradient-to-r from-primary to-secondary"
                         style={{ width: `${Math.min(100, live?.progress_percent || 0)}%` }}
@@ -656,7 +666,7 @@ export default function NGOLogin() {
                   </div>
 
                   {!matchInfo?.live && (
-                    <div className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="flex items-center space-x-1.5 px-2.5 py-2 bg-white rounded-xl border border-slate-100">
                       <Clock className="w-3 h-3 text-slate-400 animate-pulse" />
                       <span className="text-[10px] font-bold text-slate-500">Live tracker reconnecting...</span>
                     </div>
@@ -664,7 +674,7 @@ export default function NGOLogin() {
 
                   {/* Delay notification */}
                   {live?.delay_notified_at && (
-                    <div className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-amber-50 rounded-lg border border-amber-100">
+                    <div className="flex items-center space-x-1.5 px-2.5 py-2 bg-amber-50 rounded-xl border border-amber-100">
                       <Clock className="w-3 h-3 text-amber-500" />
                       <span className="text-[10px] font-bold text-amber-600">Volunteer reported a delay</span>
                     </div>
@@ -672,7 +682,7 @@ export default function NGOLogin() {
 
                   {/* No-show warning */}
                   {live?.no_show_flagged && (
-                    <div className="flex items-center justify-between px-2.5 py-2 bg-rose-50 rounded-lg border border-rose-200">
+                    <div className="flex items-center justify-between px-2.5 py-2.5 bg-rose-50 rounded-xl border border-rose-200">
                       <div className="flex items-center space-x-1.5">
                         <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
                         <span className="text-[10px] font-bold text-rose-600">No GPS signal — volunteer may not be responding</span>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ShieldCheck, Trash2, UserPlus, CheckCircle2, XCircle, Pencil, Save, X, ArrowLeft, Info, History } from 'lucide-react';
+import { Trash2, UserPlus, CheckCircle2, XCircle, Pencil, Save, X, ArrowLeft, Info, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -232,21 +232,16 @@ export default function AdminPanel() {
         <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-6 slide-up">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/ngo')}
             className="inline-flex items-center space-x-1 text-xs font-semibold text-slate-500 hover:text-primary transition-colors mb-3"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back</span>
+            <span>Back to NGO Panel</span>
           </button>
 
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center shadow-lg">
-              <ShieldCheck className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">Admin Access</h1>
-              <p className="text-slate-500 text-xs font-medium">Site administrator only</p>
-            </div>
+          <div className="mb-4">
+            <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">Admin Access</h1>
+            <p className="text-slate-500 text-xs font-medium">Site administrator only</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-3">
@@ -298,9 +293,16 @@ export default function AdminPanel() {
     <div className="h-full w-full panel-bg relative overflow-y-auto custom-scrollbar px-4 py-6 pb-16 md:pb-6 fade-in">
       <div className="max-w-6xl mx-auto space-y-4 slide-up">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-extrabold text-slate-800">Admin Panel</h1>
-            <p className="text-xs text-slate-500">Signed in as {adminName}</p>
+          <div className="flex items-center space-x-3">
+            <img
+              src="/logo.jpeg"
+              alt="Zero Hour"
+              className="w-11 h-11 rounded-xl object-cover shadow-sm border border-slate-100"
+            />
+            <div>
+              <h1 className="text-lg font-extrabold text-slate-800">Admin Panel</h1>
+              <p className="text-xs text-slate-500">Signed in as {adminName}</p>
+            </div>
           </div>
           <div className="flex items-center space-x-2">
             <button

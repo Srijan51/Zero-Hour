@@ -14,6 +14,29 @@ import { MapPin, Loader2, X } from 'lucide-react';
  */
 
 const PHOTON_URL = 'https://photon.komoot.io/api/';
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const AUTOCOMPLETE_DEBOUNCE_MS = 150;
+
+function getDistanceKm(lat1, lon1, lat2, lon2) {
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return null;
+
+  const earthRadiusKm = 6371;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistance(distanceKm) {
+  if (!Number.isFinite(distanceKm)) return '';
+  if (distanceKm < 1) return `${Math.round(distanceKm * 1000)} m away`;
+  if (distanceKm < 10) return `${distanceKm.toFixed(1)} km away`;
+  return `${Math.round(distanceKm)} km away`;
+}
 
 export default function PlacesAutocomplete({ value, onChange, placeholder, className }) {
   const [suggestions, setSuggestions] = useState([]);
@@ -21,10 +44,13 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
   const [showDropdown, setShowDropdown] = useState(false);
   const [inputValue, setInputValue] = useState(value || '');
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [geocoderError, setGeocoderError] = useState('');
   const [biasLocation, setBiasLocation] = useState({ lat: 22.5726, lon: 88.3639 }); // Default Kolkata
   const wrapperRef = useRef(null);
   const debounceTimer = useRef(null);
   const abortControllerRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   // Get user's location for bias
   useEffect(() => {
@@ -35,6 +61,32 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
       { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
     );
   }, []);
+
+  const sortSuggestionsByDistance = (features) => {
+    return [...features]
+      .map((feature, index) => {
+        const [lng, lat] = feature.geometry?.coordinates || [];
+        const distanceKm = getDistanceKm(biasLocation.lat, biasLocation.lon, Number(lat), Number(lng));
+        return {
+          ...feature,
+          properties: {
+            ...(feature.properties || {}),
+            distance_km: distanceKm,
+            original_index: index,
+          },
+        };
+      })
+      .sort((a, b) => {
+        const aDistance = a.properties?.distance_km;
+        const bDistance = b.properties?.distance_km;
+        if (Number.isFinite(aDistance) && Number.isFinite(bDistance)) {
+          return aDistance - bDistance;
+        }
+        if (Number.isFinite(aDistance)) return -1;
+        if (Number.isFinite(bDistance)) return 1;
+        return (a.properties?.original_index || 0) - (b.properties?.original_index || 0);
+      });
+  };
 
   // Keep input in sync with parent value
   useEffect(() => {
@@ -54,9 +106,12 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
   }, []);
 
   const fetchSuggestions = async (input) => {
-    if (!input || input.length < 2) {
+    const query = input.trim();
+    if (!query || query.length < 2) {
       setSuggestions([]);
       setShowDropdown(false);
+      setHasSearched(false);
+      setGeocoderError('');
       return;
     }
 
@@ -65,11 +120,16 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
 
     setIsLoading(true);
+    setShowDropdown(true);
+    setHasSearched(false);
+    setGeocoderError('');
     try {
       const params = new URLSearchParams({
-        q: input,
+        q: query,
         limit: '7',
         lat: String(biasLocation.lat),
         lon: String(biasLocation.lon),
@@ -83,31 +143,92 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
       if (!resp.ok) throw new Error('Photon request failed');
       const data = await resp.json();
 
-      const features = data.features || [];
+      let features = sortSuggestionsByDistance(data.features || []);
+      if (features.length === 0) {
+        features = sortSuggestionsByDistance(await fetchNominatimSuggestions(query, abortControllerRef.current.signal));
+      }
+
+      if (requestId !== requestIdRef.current) return;
       setSuggestions(features);
-      setShowDropdown(features.length > 0);
+      setShowDropdown(true);
+      setHasSearched(true);
       setActiveIndex(-1);
     } catch (err) {
       if (err.name !== 'AbortError') {
-        console.error('Photon geocoder error:', err);
-        setSuggestions([]);
-        setShowDropdown(false);
+        try {
+          const features = sortSuggestionsByDistance(await fetchNominatimSuggestions(query, abortControllerRef.current.signal));
+          if (requestId !== requestIdRef.current) return;
+          setSuggestions(features);
+          setShowDropdown(true);
+          setHasSearched(true);
+          setActiveIndex(-1);
+          setGeocoderError(features.length > 0 ? '' : 'No matching locations found');
+        } catch (fallbackErr) {
+          if (fallbackErr.name !== 'AbortError') {
+            console.error('Location geocoder error:', fallbackErr);
+            if (requestId !== requestIdRef.current) return;
+            setSuggestions([]);
+            setShowDropdown(true);
+            setHasSearched(true);
+            setGeocoderError('Location suggestions are unavailable right now');
+          }
+        }
       }
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
+  };
+
+  const fetchNominatimSuggestions = async (query, signal) => {
+    const params = new URLSearchParams({
+      q: query,
+      format: 'jsonv2',
+      addressdetails: '1',
+      limit: '7',
+      'accept-language': 'en',
+    });
+
+    const resp = await fetch(`${NOMINATIM_URL}?${params.toString()}`, { signal });
+    if (!resp.ok) throw new Error('Nominatim request failed');
+    const data = await resp.json();
+
+    return (Array.isArray(data) ? data : []).map((place, idx) => {
+      const address = place.address || {};
+      const displayParts = (place.display_name || '').split(',').map((part) => part.trim()).filter(Boolean);
+      return {
+        geometry: {
+          coordinates: [Number(place.lon), Number(place.lat)],
+        },
+        properties: {
+          osm_id: place.osm_id || `nominatim-${idx}`,
+          osm_key: place.class || 'place',
+          osm_value: place.type || '',
+          name: address.name || place.name || displayParts[0],
+          street: address.road || address.pedestrian || address.neighbourhood,
+          district: address.suburb || address.city_district || address.county,
+          city: address.city || address.town || address.village || address.municipality,
+          state: address.state,
+          country: address.country,
+        },
+      };
+    });
   };
 
   const handleInputChange = (e) => {
     const val = e.target.value;
     setInputValue(val);
     onChange(val, null, null);
+    setGeocoderError('');
+    setHasSearched(false);
+    setShowDropdown(val.trim().length >= 2);
 
     // Debounce
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       fetchSuggestions(val);
-    }, 300);
+    }, AUTOCOMPLETE_DEBOUNCE_MS);
   };
 
   // Build a human-readable display name from Photon's properties
@@ -163,6 +284,8 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
     setSuggestions([]);
     setShowDropdown(false);
     setActiveIndex(-1);
+    setHasSearched(false);
+    setGeocoderError('');
     onChange('', null, null);
   };
 
@@ -177,7 +300,9 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
     if (props.city && props.city !== primary) secondaryParts.push(props.city);
     if (props.state) secondaryParts.push(props.state);
     if (props.country) secondaryParts.push(props.country);
-    const secondary = secondaryParts.join(', ');
+    const distance = formatDistance(props.distance_km);
+    if (distance) secondaryParts.unshift(distance);
+    const secondary = secondaryParts.join(' - ');
 
     return { primary, secondary };
   };
@@ -205,10 +330,10 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
           type="text"
           value={inputValue}
           onChange={handleInputChange}
-          onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
+          onFocus={() => { if (inputValue.trim().length >= 2) setShowDropdown(true); }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || "Search for a location..."}
-          className="w-full mt-1 pl-9 pr-9 py-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+          className="w-full mt-1 pl-9 pr-9 py-3 bg-white rounded-xl text-sm border border-slate-200 shadow-sm focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
           autoComplete="off"
         />
         {isLoading && (
@@ -226,11 +351,29 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
       </div>
 
       {/* Dropdown */}
-      {showDropdown && suggestions.length > 0 && (
-        <div className="absolute z-50 left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden max-h-[280px] overflow-y-auto custom-scrollbar">
+      {showDropdown && (isLoading || geocoderError || suggestions.length > 0 || hasSearched) && (
+        <div className="absolute z-50 left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_18px_50px_rgba(15,23,42,0.18)] border border-slate-100 overflow-hidden max-h-[320px] overflow-y-auto custom-scrollbar">
+          {isLoading && suggestions.length === 0 && (
+            <div className="px-4 py-3 flex items-center space-x-2 text-slate-500">
+              <Loader2 className="w-4 h-4 animate-spin text-primary/60" />
+              <span className="text-sm font-medium">Searching locations...</span>
+            </div>
+          )}
+
+          {!isLoading && geocoderError && suggestions.length === 0 && (
+            <div className="px-4 py-3 text-sm font-medium text-slate-500">
+              {geocoderError}
+            </div>
+          )}
+
+          {!isLoading && !geocoderError && hasSearched && suggestions.length === 0 && (
+            <div className="px-4 py-3 text-sm font-medium text-slate-500">
+              No matching locations found
+            </div>
+          )}
+
           {suggestions.map((feature, idx) => {
             const { primary, secondary } = formatSuggestion(feature);
-            const typeEmoji = getTypeEmoji(feature);
             const isActive = idx === activeIndex;
 
             return (
@@ -238,20 +381,23 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
                 key={`${feature.properties?.osm_id || idx}-${idx}`}
                 type="button"
                 onClick={() => handleSelectSuggestion(feature)}
-                className={`w-full text-left px-4 py-3 transition-colors flex items-start space-x-3 group border-b border-slate-50 last:border-b-0 ${
-                  isActive ? 'bg-primary/5' : 'hover:bg-primary/5'
+                className={`w-full text-left px-4 py-3.5 transition-colors flex items-center space-x-3 group border-b border-slate-100 last:border-b-0 ${
+                  isActive ? 'bg-primary/5' : 'hover:bg-slate-50'
                 }`}
               >
-                <MapPin className={`w-4 h-4 mt-0.5 flex-shrink-0 transition-colors ${
-                  isActive ? 'text-primary' : 'text-slate-300 group-hover:text-primary'
-                }`} />
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                  isActive ? 'bg-primary/10' : 'bg-slate-100 group-hover:bg-primary/10'
+                }`}>
+                  <MapPin className={`w-4 h-4 transition-colors ${
+                    isActive ? 'text-primary' : 'text-slate-500 group-hover:text-primary'
+                  }`} />
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm leading-snug truncate">
                     <span className="text-slate-800 font-semibold">{primary}</span>
-                    {typeEmoji && <span className="ml-1.5 text-xs">{typeEmoji}</span>}
                   </p>
                   {secondary && (
-                    <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
                       {secondary}
                     </p>
                   )}
@@ -259,7 +405,7 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
               </button>
             );
           })}
-          <div className="px-4 py-1.5 bg-slate-50/50 flex items-center justify-end">
+          <div className="px-4 py-2 bg-slate-50/80 flex items-center justify-end">
             <span className="text-[9px] text-slate-300 font-medium tracking-wide">
               © OpenStreetMap contributors
             </span>

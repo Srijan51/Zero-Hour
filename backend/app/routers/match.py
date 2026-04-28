@@ -15,6 +15,8 @@ router = APIRouter(prefix="/match", tags=["Match"])
 ARRIVAL_THRESHOLD_KM = 0.2
 # No-show: pings stopped for this many minutes
 NO_SHOW_PING_TIMEOUT_MIN = 5
+# Volunteers can self-cancel only shortly after accepting.
+VOLUNTEER_CANCEL_WINDOW_SECONDS = 120
 
 
 def _get_authenticated_ngo(authorization: str = Header(default=""), db: Session = Depends(get_db)) -> NGOAccount:
@@ -253,6 +255,38 @@ def notify_delay(
     return {"ok": True, "delay_notified_at": match.delay_notified_at.isoformat()}
 
 
+@router.post("/{match_id}/cancel")
+def volunteer_cancel(
+    match_id: int,
+    db: Session = Depends(get_db),
+    volunteer_id: int = Depends(_get_authenticated_volunteer_id),
+):
+    """Allow a volunteer to cancel a just-accepted mission within two minutes."""
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    _ensure_volunteer_owns_match(volunteer_id, match)
+
+    if match.status in ("pending_confirmation", "completed", "cancelled"):
+        raise HTTPException(status_code=400, detail="Match already finalized")
+
+    created_at = match.created_at or datetime.now(timezone.utc)
+    created_utc = created_at.astimezone(timezone.utc) if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+    elapsed_seconds = (datetime.now(timezone.utc) - created_utc).total_seconds()
+    if elapsed_seconds > VOLUNTEER_CANCEL_WINDOW_SECONDS:
+        raise HTTPException(status_code=400, detail="Cancellation window has expired")
+
+    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
+    match.status = "cancelled"
+    if req and req.status in ("matched", "pending_confirmation"):
+        req.status = "open"
+
+    db.commit()
+
+    print(f"Volunteer cancelled match {match_id}; request re-opened")
+    return {"ok": True, "status": "cancelled"}
+
+
 @router.post("/{match_id}/complete")
 def volunteer_complete(
     match_id: int,
@@ -410,6 +444,7 @@ def get_match_live_status(
     return MatchLiveResponse(
         id=match.id,
         status=status,
+        created_at=match.created_at,
         progress_percent=round(progress_percent, 2),
         eta_minutes=eta_minutes,
         eta_text=eta_text,

@@ -168,6 +168,7 @@ class MatchResponse(BaseModel):
     request_id: int
     score: float
     status: str
+    created_at: Optional[datetime] = None
     eta_minutes: Optional[int] = None
     eta_text: Optional[str] = None
     volunteer_lat: Optional[float] = None
@@ -186,6 +187,7 @@ class MatchResponse(BaseModel):
 class MatchLiveResponse(BaseModel):
     id: int
     status: str
+    created_at: Optional[datetime] = None
     progress_percent: float
     eta_minutes: int
     eta_text: Optional[str] = None
@@ -199,4 +201,3 @@ class MatchLiveResponse(BaseModel):
     volunteer_phone: Optional[str] = None
     volunteer_name: Optional[str] = None
     request: Optional[NGORequestResponse] = None
-

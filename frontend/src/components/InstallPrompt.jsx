@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, X, Smartphone } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -75,9 +75,11 @@ export default function InstallPrompt() {
 
         <div className="relative p-4 flex items-center space-x-3">
           {/* Icon */}
-          <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/20">
-            <Smartphone className="w-6 h-6 text-white" />
-          </div>
+          <img
+            src="/logo.jpeg"
+            alt="Zero Hour"
+            className="flex-shrink-0 w-12 h-12 rounded-xl object-cover ring-1 ring-white/30 shadow-lg"
+          />
 
           {/* Text */}
           <div className="flex-1 min-w-0">

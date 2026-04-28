@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import api from '../services/api';
-import { Navigation, CheckCircle, MapPin, Phone, User, Clock, AlertTriangle, Loader2 } from 'lucide-react';
+import { Navigation, CheckCircle, MapPin, Phone, User, Clock, AlertTriangle, Loader2, XCircle } from 'lucide-react';
 
 const ACTIVE_MATCH_STORAGE_KEY = 'active_match_id';
 const ACTIVE_MISSION_STORAGE_KEY = 'active_mission';
@@ -17,6 +17,7 @@ function getStoredActiveMission() {
           volunteer_id: parsed.volunteer_id != null ? Number(parsed.volunteer_id) : null,
           request_id: parsed.request_id != null ? Number(parsed.request_id) : null,
           score: parsed.score != null ? Number(parsed.score) : null,
+          created_at: parsed.created_at || null,
         };
       }
     } catch {
@@ -52,6 +53,20 @@ function buildDirectionsUrl(request, currentLat, currentLng) {
   }
 
   return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function getCancelSecondsRemaining(createdAt) {
+  if (!createdAt) return 0;
+  const acceptedAtMs = new Date(createdAt).getTime();
+  if (!Number.isFinite(acceptedAtMs)) return 0;
+  return Math.max(0, Math.ceil((acceptedAtMs + 120000 - Date.now()) / 1000));
+}
+
+function formatCancelTime(seconds) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = String(safeSeconds % 60).padStart(2, '0');
+  return `${minutes}:${remainingSeconds}`;
 }
 
 function getCurrentLocation() {
@@ -157,11 +172,16 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
   const [liveStatus, setLiveStatus] = useState(null);
   const [isDelaying, setIsDelaying] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [delayNotified, setDelayNotified] = useState(false);
+  const [cancelSecondsRemaining, setCancelSecondsRemaining] = useState(() => (
+    getCancelSecondsRemaining(matchData?.created_at)
+  ));
   const pingIntervalRef = useRef(null);
   const statusIntervalRef = useRef(null);
   const volunteerToken = localStorage.getItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY) || '';
   const volunteerHeaders = volunteerToken ? { 'X-Volunteer-Token': volunteerToken } : {};
+  const acceptedAt = liveStatus?.created_at || matchData?.created_at;
 
   // Send GPS pings every 15 seconds
   useEffect(() => {
@@ -207,6 +227,16 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
     setDelayNotified(alreadyDelayed);
   }, [liveStatus?.delay_notified_at, matchData?.delay_notified_at]);
 
+  useEffect(() => {
+    const updateCancelWindow = () => {
+      setCancelSecondsRemaining(getCancelSecondsRemaining(acceptedAt));
+    };
+
+    updateCancelWindow();
+    const interval = setInterval(updateCancelWindow, 1000);
+    return () => clearInterval(interval);
+  }, [acceptedAt]);
+
   const handleDelay = async () => {
     setIsDelaying(true);
     try {
@@ -228,6 +258,23 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
     setIsCompleting(false);
   };
 
+  const handleCancelMission = async () => {
+    if (cancelSecondsRemaining <= 0 || isCancelling) return;
+
+    setIsCancelling(true);
+    try {
+      await api.post(`/match/${matchId}/cancel`, {}, { headers: volunteerHeaders });
+      if (onMissionFinished) onMissionFinished();
+      onReset();
+    } catch (err) {
+      const detail = err?.response?.data?.detail || 'Cancellation window has expired';
+      alert(detail);
+      setCancelSecondsRemaining(0);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const handleOpenDirections = (e) => {
     e.preventDefault();
     // Open synchronously in new tab — must happen in direct click handler to avoid popup blocker
@@ -246,6 +293,29 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
   const progress = liveStatus?.progress_percent || 0;
   const arrived = liveStatus?.arrived || false;
   const statusMessage = liveStatus?.status_message || 'En route to mission...';
+
+  if (status === 'cancelled') {
+    return (
+      <div className="p-8 glass-panel rounded-t-[2.5rem] sm:rounded-[2.5rem] space-y-5 slide-up">
+        <div className="flex items-center space-x-3 text-rose-500 mb-2">
+          <XCircle className="w-10 h-10 drop-shadow-sm" />
+          <div>
+            <h2 className="text-xl font-extrabold tracking-tight text-slate-800">Mission Cancelled</h2>
+            <p className="text-xs text-slate-400">This request is available for other volunteers again.</p>
+          </div>
+        </div>
+        <button
+          className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl shadow-md active:scale-95 transition-all"
+          onClick={() => {
+            if (onMissionFinished) onMissionFinished();
+            onReset();
+          }}
+        >
+          Return Home
+        </button>
+      </div>
+    );
+  }
 
   // Waiting for NGO confirmation
   if (status === 'pending_confirmation') {
@@ -353,6 +423,23 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
         <Navigation className="w-4 h-4" />
         <span>Open Directions</span>
       </a>
+
+      {cancelSecondsRemaining > 0 ? (
+        <button
+          type="button"
+          onClick={handleCancelMission}
+          disabled={isCancelling}
+          className="w-full py-2.5 bg-rose-50 text-rose-500 border border-rose-100 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all hover:bg-rose-100 active:scale-95 disabled:opacity-60"
+        >
+          <XCircle className="w-3.5 h-3.5" />
+          <span>{isCancelling ? 'Cancelling...' : `Cancel Mission (${formatCancelTime(cancelSecondsRemaining)})`}</span>
+        </button>
+      ) : (
+        <div className="w-full py-2.5 bg-slate-50 text-slate-400 border border-slate-100 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5">
+          <Clock className="w-3.5 h-3.5" />
+          <span>Cancellation window closed</span>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex space-x-2">
@@ -463,6 +550,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
           volunteer_id: volunteerId || undefined,
           score: restoredScore != null ? restoredScore : 0,
           status: live.status,
+          created_at: live.created_at,
           eta_minutes: live.eta_minutes,
           eta_text: live.eta_text,
           request: live.request,
@@ -505,6 +593,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         volunteer_id: res.data.volunteer_id,
         request_id: res.data.request_id,
         score: res.data.score,
+        created_at: res.data.created_at,
       }));
       setShowPhonePrompt(false);
     } catch (error) {

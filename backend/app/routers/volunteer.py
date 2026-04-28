@@ -11,8 +11,6 @@ from app.services.matcher import rank_requests
 from app.schemas import VolunteerResponse, VolunteerCreate, NGORequestResponse
 import json
 
-from backend.app.session_store import create_token
-
 router = APIRouter(prefix="/volunteer", tags=["Volunteer"])
 
 

@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import AdminAccount, Match, NGOAccount, NGORegistration, NGORequest
-from app.routers.ngo import ACTIVE_TOKENS
 from app.schemas import (
     AdminNGORequestResponse,
     AdminNGORequestUpdate,

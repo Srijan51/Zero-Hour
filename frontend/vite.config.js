@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'icon-maskable.svg'],
+      includeAssets: ['logo.jpeg', 'icon.svg', 'icon-maskable.svg'],
       devOptions: {
         enabled: true
       },
@@ -80,9 +80,9 @@ export default defineConfig({
         categories: ['social', 'utilities'],
         icons: [
           {
-            src: '/icon.svg',
-            sizes: '48x48 72x72 96x96 128x128 192x192 256x256 512x512',
-            type: 'image/svg+xml',
+            src: '/logo.jpeg',
+            sizes: '512x512',
+            type: 'image/jpeg',
             purpose: 'any',
           },
           {
@@ -99,13 +99,13 @@ export default defineConfig({
             short_name: 'Report',
             description: 'Use voice to report an emergency need',
             url: '/',
-            icons: [{ src: '/icon.svg', sizes: '192x192' }],
+            icons: [{ src: '/logo.jpeg', sizes: '512x512', type: 'image/jpeg' }],
           },
           {
             name: 'NGO Dashboard',
             short_name: 'NGO',
             url: '/ngo',
-            icons: [{ src: '/icon.svg', sizes: '192x192' }],
+            icons: [{ src: '/logo.jpeg', sizes: '512x512', type: 'image/jpeg' }],
           },
         ],
       },

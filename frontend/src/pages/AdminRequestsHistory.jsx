@@ -176,7 +176,13 @@ export default function AdminRequestsHistory() {
     <div className="h-full w-full panel-bg relative overflow-y-auto custom-scrollbar px-4 py-6 pb-16 md:pb-6 fade-in">
       <div className="max-w-6xl mx-auto space-y-4 slide-up">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center justify-between">
-          <div>
+          <div className="flex items-center space-x-3">
+            <img
+              src="/logo.jpeg"
+              alt="Zero Hour"
+              className="w-11 h-11 rounded-xl object-cover shadow-sm border border-slate-100"
+            />
+            <div>
             <button
               type="button"
               onClick={() => navigate('/admin')}
@@ -187,6 +193,7 @@ export default function AdminRequestsHistory() {
             </button>
             <h1 className="text-lg font-extrabold text-slate-800 mt-1">Request History Log</h1>
             <p className="text-xs text-slate-500">All NGO requests with admin edit and delete controls</p>
+            </div>
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-500">Signed in as</p>

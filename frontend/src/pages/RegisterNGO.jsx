@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import api from '../services/api';
 
 export default function RegisterNGO() {
@@ -55,9 +55,11 @@ export default function RegisterNGO() {
 
         <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 slide-up">
           <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/30">
-              <Building2 className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="/logo.jpeg"
+              alt="Zero Hour"
+              className="w-12 h-12 rounded-xl object-cover shadow-lg shadow-primary/20 border border-slate-100"
+            />
             <div>
               <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">NGO Registration</h1>
               <p className="text-slate-500 text-xs font-medium">Apply for approval to access NGO Command</p>
