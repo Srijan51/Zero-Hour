@@ -11,10 +11,11 @@ from app.services.matcher import rank_requests
 from app.schemas import VolunteerResponse, VolunteerCreate, NGORequestResponse
 import json
 
+from backend.app.session_store import create_token
+
 router = APIRouter(prefix="/volunteer", tags=["Volunteer"])
 
-# In-memory token map: token -> volunteer id.
-ACTIVE_VOLUNTEER_TOKENS: Dict[str, int] = {}
+
 
 @router.post("/dispatch")
 async def process_voice_dispatch(
@@ -43,8 +44,8 @@ async def process_voice_dispatch(
     db.add(volunteer)
     db.commit()
     db.refresh(volunteer)
-    volunteer_token = secrets.token_urlsafe(32)
-    ACTIVE_VOLUNTEER_TOKENS[volunteer_token] = volunteer.id
+    from app.services.session_store import create_token
+    volunteer_token = create_token(db, user_type="volunteer", user_id=volunteer.id)
 
     print(f"\n{'='*60}")
     print(f"🎤 Dispatch: \"{transcript}\"")

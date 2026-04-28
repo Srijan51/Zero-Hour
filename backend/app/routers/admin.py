@@ -23,8 +23,7 @@ from app.services.auth import hash_password, verify_password
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
-# In-memory token map: token -> admin id.
-ACTIVE_ADMIN_TOKENS: Dict[str, int] = {}
+
 
 
 def ensure_default_admin(db: Session) -> None:
@@ -49,7 +48,9 @@ def _get_authenticated_admin(authorization: str = Header(default=""), db: Sessio
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin authentication required")
 
     token = authorization.split(" ", 1)[1].strip()
-    admin_id = ACTIVE_ADMIN_TOKENS.get(token)
+
+    from app.services.session_store import get_user_id
+    admin_id = get_user_id(db, token, "admin")
     if not admin_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired admin token")
 
@@ -65,8 +66,8 @@ def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
     if not admin or not verify_password(payload.password, admin.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin credentials")
 
-    token = secrets.token_urlsafe(32)
-    ACTIVE_ADMIN_TOKENS[token] = admin.id
+    from app.services.session_store import create_token
+    token = create_token(db, user_type="admin", user_id=admin.id)
     return AdminLoginResponse(token=token, username=admin.username)
 
 
@@ -127,9 +128,8 @@ def delete_ngo_account(ngo_id: int, db: Session = Depends(get_db), admin: AdminA
     db.delete(ngo)
     db.commit()
 
-    tokens_to_remove = [token for token, token_ngo_id in ACTIVE_TOKENS.items() if token_ngo_id == ngo_id]
-    for token in tokens_to_remove:
-        del ACTIVE_TOKENS[token]
+    from app.services.session_store import delete_all_tokens_for_user
+    delete_all_tokens_for_user(db, user_type="ngo", user_id=ngo_id)
 
     return {"message": "NGO deleted"}
 

@@ -99,3 +99,12 @@ class AdminAccount(Base):
     password_hash = Column(String, nullable=False)
     is_superadmin = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    user_type = Column(String, nullable=False)  # "ngo", "admin", "volunteer"
+    user_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

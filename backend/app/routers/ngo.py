@@ -20,7 +20,7 @@ from app.services.auth import hash_password, verify_password
 router = APIRouter(prefix="/ngo", tags=["NGO"])
 
 # In-memory token map: token -> NGO account id.
-ACTIVE_TOKENS: Dict[str, int] = {}
+
 
 
 def _get_authenticated_ngo(authorization: str = Header(default=""), db: Session = Depends(get_db)) -> NGOAccount:
@@ -28,7 +28,9 @@ def _get_authenticated_ngo(authorization: str = Header(default=""), db: Session 
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     token = authorization.split(" ", 1)[1].strip()
-    ngo_id = ACTIVE_TOKENS.get(token)
+
+    from app.services.session_store import get_user_id
+    ngo_id = get_user_id(db, token, "ngo")
     if not ngo_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
@@ -82,8 +84,8 @@ def ngo_login(payload: NGOLoginRequest, db: Session = Depends(get_db)):
     if not ngo or not verify_password(payload.password, ngo.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid NGO credentials")
 
-    token = secrets.token_urlsafe(32)
-    ACTIVE_TOKENS[token] = ngo.id
+    from app.services.session_store import create_token
+    token = create_token(db, user_type="ngo", user_id=ngo.id)
     return NGOLoginResponse(token=token, ngo_name=ngo.ngo_name)
 
 

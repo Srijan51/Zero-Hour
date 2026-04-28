@@ -4,8 +4,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Match, NGOAccount, NGORequest, Volunteer
-from app.routers.ngo import ACTIVE_TOKENS
-from app.routers.volunteer import ACTIVE_VOLUNTEER_TOKENS
 from app.schemas import CheckinRequest, MatchConfirm, MatchLiveResponse, MatchResponse
 from app.services.matcher import compute_score, haversine
 from app.services.google_maps import get_driving_eta
@@ -22,9 +20,10 @@ NO_SHOW_PING_TIMEOUT_MIN = 5
 def _get_authenticated_ngo(authorization: str = Header(default=""), db: Session = Depends(get_db)) -> NGOAccount:
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="NGO authentication required")
-
     token = authorization.split(" ", 1)[1].strip()
-    ngo_id = ACTIVE_TOKENS.get(token)
+
+    from app.services.session_store import get_user_id
+    ngo_id = get_user_id(db, token, "ngo")
     if not ngo_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired NGO token")
 
@@ -34,12 +33,17 @@ def _get_authenticated_ngo(authorization: str = Header(default=""), db: Session 
     return ngo
 
 
-def _get_authenticated_volunteer_id(x_volunteer_token: str = Header(default="", alias="X-Volunteer-Token")) -> int:
+def _get_authenticated_volunteer_id(
+    x_volunteer_token: str = Header(default="", alias="X-Volunteer-Token"),
+    db: Session = Depends(get_db),
+) -> int:
     token = (x_volunteer_token or "").strip()
-    volunteer_id = ACTIVE_VOLUNTEER_TOKENS.get(token)
+
+    from app.services.session_store import get_user_id
+    volunteer_id = get_user_id(db, token, "volunteer")
     if not volunteer_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Volunteer authentication required")
-    return volunteer_id
+    return volunteer_id 
 
 
 def _ensure_ngo_owns_request(ngo: NGOAccount, request: NGORequest) -> None:
@@ -368,18 +372,20 @@ def get_match_live_status(
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
 
+    from app.services.session_store import get_user_id as _get_uid
+
     ngo_authenticated = False
     token = (authorization or "").strip()
     if token.startswith("Bearer "):
         ngo_token = token.split(" ", 1)[1].strip()
-        ngo_id = ACTIVE_TOKENS.get(ngo_token)
+        ngo_id = _get_uid(db, ngo_token, "ngo")
         if ngo_id:
             ngo = db.query(NGOAccount).filter(NGOAccount.id == ngo_id, NGOAccount.is_active == True).first()
             if ngo and ngo.ngo_name == req.ngo_name:
                 ngo_authenticated = True
 
     volunteer_token = (x_volunteer_token or "").strip()
-    volunteer_id = ACTIVE_VOLUNTEER_TOKENS.get(volunteer_token)
+    volunteer_id = _get_uid(db, volunteer_token, "volunteer")
     volunteer_authenticated = volunteer_id == match.volunteer_id
 
     if not ngo_authenticated and not volunteer_authenticated:
