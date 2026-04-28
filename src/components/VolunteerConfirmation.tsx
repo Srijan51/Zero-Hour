@@ -34,6 +34,16 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
   const secs = timeLeft % 60;
   const timeString = `${mins}:${secs.toString().padStart(2, '0')}`;
 
+  const handleCancel = () => {
+    // Notify NGO dashboard that this volunteer cancelled
+    try {
+      window.dispatchEvent(new CustomEvent('volunteer-cancelled', { detail: { volunteerName: 'Rapid Volunteer', requestId: match.request.id } }));
+    } catch (e) {
+      // ignore if not available
+    }
+    onDone();
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -70,10 +80,9 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
       </div>
 
       <div className="flex-1 p-10 overflow-y-auto">
-        {/* NGO Info */}
-        <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm mb-8">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-6">Target Destination</h3>
-          <div className="flex items-start gap-5">
+        {/* Combined NGO + Status Card */}
+        <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm mb-8 flex flex-col md:flex-row gap-8">
+          <div className="flex items-start gap-5 flex-1">
             <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center flex-shrink-0 border border-slate-100">
               <MapPin className="w-6 h-6 text-slate-400" />
             </div>
@@ -82,31 +91,30 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
               <p className="text-sm font-medium text-slate-500 leading-relaxed">{match.request.location.address}</p>
             </div>
           </div>
-        </div>
 
-        {/* Status Tracker */}
-        <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm mb-8">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300 mb-8">Mission Status</h3>
-          <div className="space-y-8 relative">
-            <div className="absolute left-[5.5px] top-2 bottom-2 w-[1px] bg-slate-100" />
-            {statusSteps.map((step, i) => (
-              <div key={i} className="flex gap-6 items-center relative z-10">
-                <div className={`w-3 h-3 rounded-full border-2 ${
-                  step.completed ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-200'
-                }`} />
-                <span className={`text-[10px] font-black uppercase tracking-widest ${
-                  step.completed ? 'text-slate-900' : 'text-slate-200'
-                }`}>
-                  {step.label}
-                </span>
-                {i === 1 && (
-                  <div className="ml-auto flex items-center gap-2">
-                    <span className="w-2 h-2 bg-blue-600 rounded-full animate-ping" />
-                    <span className="text-[9px] font-bold text-blue-600 uppercase">Live Tracking</span>
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="flex-1">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300 mb-6">Mission Status</h3>
+            <div className="space-y-6 relative">
+              <div className="absolute left-[5.5px] top-2 bottom-2 w-[1px] bg-slate-100" />
+              {statusSteps.map((step, i) => (
+                <div key={i} className="flex gap-6 items-center relative z-10">
+                  <div className={`w-3 h-3 rounded-full border-2 ${
+                    step.completed ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-200'
+                  }`} />
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${
+                    step.completed ? 'text-slate-900' : 'text-slate-200'
+                  }`}>
+                    {step.label}
+                  </span>
+                  {i === 1 && (
+                    <div className="ml-auto flex items-center gap-2">
+                      <span className="w-2 h-2 bg-blue-600 rounded-full animate-ping" />
+                      <span className="text-[9px] font-bold text-blue-600 uppercase">Live Tracking</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -130,7 +138,7 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
             onClick={onDone}
             className="w-full py-5 bg-white border border-slate-200 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] text-red-500 hover:text-red-700 hover:border-red-200 transition-all flex flex-col items-center gap-1"
           >
-            <span>Cancel Mission</span>
+            <span>Cancel Mission</span>l̥
             <span className="text-[8px] text-slate-400">Window closes in {timeString}</span>
           </button>
         </div>

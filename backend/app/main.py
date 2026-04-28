@@ -2,6 +2,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy import inspect, text
 from app.database import Base, SessionLocal, engine
 from app.routers import admin, match, ngo, volunteer
@@ -124,7 +125,7 @@ allowed_origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -183,5 +184,36 @@ def get_stats():
             "total_volunteers": total_volunteers,
             "avg_eta_minutes": round(avg_eta, 1),
         }
+    finally:
+        db.close()
+
+
+class RebroadcastRequest(BaseModel):
+    requestId: int
+
+
+@app.post("/api/rebroadcast")
+def rebroadcast_request(payload: RebroadcastRequest):
+    from app.models import Match, NGORequest
+
+    db = SessionLocal()
+    try:
+        req = db.query(NGORequest).filter(NGORequest.id == payload.requestId).first()
+        if not req:
+            return {"ok": False, "detail": "Request not found"}
+
+        active_match = (
+            db.query(Match)
+            .filter(Match.request_id == req.id, Match.status.in_(["en_route", "nearby", "on_site", "pending_confirmation", "matched"]))
+            .order_by(Match.id.desc())
+            .first()
+        )
+
+        if active_match:
+            active_match.status = "cancelled"
+
+        req.status = "open"
+        db.commit()
+        return {"ok": True, "status": "open", "requestId": req.id}
     finally:
         db.close()

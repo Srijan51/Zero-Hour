@@ -85,7 +85,7 @@ Zero Hour connects crisis-affected communities with nearby volunteers in real ti
   - Volunteer name and phone (clickable)
   - Live progress bar with GPS-based tracking
   - "Volunteer reported a delay" notification
-  - No-show warning with re-broadcast option
+  - Cancellation and no-show alerts with a persistent re-broadcast option
   - Confirm/Dispute buttons for task completion
 
 ### 🔐 NGO Registration & Admin Approval
@@ -209,8 +209,9 @@ npm run dev
 2. Login at `/ngo` → see live request feed
 3. **"Broadcast New Request"** → fill task, skills, assets, location, urgency
 4. See volunteer accept → track live progress + GPS
-5. Get notified of delays / no-shows
-6. **"Confirm Done"** or **"Dispute"** when volunteer marks task complete
+5. Get notified of delays, cancellations, and no-shows
+6. Use **"Re-broadcast"** at any time to reopen a request for other volunteers
+7. **"Confirm Done"** or **"Dispute"** when volunteer marks task complete
 
 ### Admin Flow
 1. Login at `/admin` with admin credentials
@@ -236,6 +237,7 @@ npm run dev
 | POST | `/match/{id}/ngo-confirm` | NGO confirms completion |
 | POST | `/match/{id}/ngo-dispute` | NGO disputes → re-opens request |
 | POST | `/match/{id}/rebroadcast` | Cancel no-show, re-open request |
+| POST | `/api/rebroadcast` | Frontend rebroadcast helper for reopening a request |
 | GET | `/match/{id}/live` | Live tracking status + no-show flag |
 | GET | `/match/request/{id}` | Get matches for a request |
 | GET | `/match/volunteer/{id}` | Get matches for a volunteer |

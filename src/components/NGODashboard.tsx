@@ -12,6 +12,7 @@ interface NGODashboardProps {
 export default function NGODashboard({ requests, onNewRequest }: NGODashboardProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [notifications, setNotifications] = useState<{id: string, text: string}[]>([]);
+  const [rebroadcastEnabled, setRebroadcastEnabled] = useState<Record<string, boolean>>({});
   const [formData, setFormData] = useState({
     ngoName: '',
     taskType: '',
@@ -35,9 +36,44 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
       }
     };
 
+    const handleCancel = (e: any) => {
+      const { volunteerName, requestId } = e.detail;
+      const req = requests.find(r => r.id === requestId);
+      if (req) {
+        const id = Math.random().toString(36).substr(2, 5);
+        setNotifications(prev => [...prev, { id, text: `${volunteerName} cancelled mission for ${req.taskType}` }]);
+        // enable rebroadcast UI state for this request
+        setRebroadcastEnabled(prev => ({ ...prev, [requestId]: true }));
+        setTimeout(() => {
+          setNotifications(prev => prev.filter(n => n.id !== id));
+        }, 6000);
+      }
+    };
+
     window.addEventListener('volunteer-dispatched', handleDispatch as any);
-    return () => window.removeEventListener('volunteer-dispatched', handleDispatch as any);
+    window.addEventListener('volunteer-cancelled', handleCancel as any);
+    return () => {
+      window.removeEventListener('volunteer-dispatched', handleDispatch as any);
+      window.removeEventListener('volunteer-cancelled', handleCancel as any);
+    };
   }, [requests]);
+
+  const handleRebroadcast = (requestId: string) => {
+    const req = requests.find(r => r.id === requestId);
+    if (!req) return;
+    // notify server (best-effort) and show a notification locally
+    fetch('/api/rebroadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId })
+    }).catch(() => {});
+
+    const id = Math.random().toString(36).substr(2, 5);
+    setNotifications(prev => [...prev, { id, text: `Rebroadcast sent for ${req.taskType}` }]);
+    // keep the rebroadcast option available (per requirement)
+    setRebroadcastEnabled(prev => ({ ...prev, [requestId]: false }));
+    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,13 +173,19 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
               </div>
             </div>
             
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
                <div className="text-right">
                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">Status</p>
                  <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Searching AI Pool</span>
                </div>
-               <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                 <Plus className="w-4 h-4 text-slate-300" />
+               <div>
+                 <button
+                   onClick={() => handleRebroadcast(req.id)}
+                   className={`py-2 px-3 rounded-2xl font-bold text-[10px] flex items-center gap-2 transition-all ${rebroadcastEnabled[req.id] ? 'bg-yellow-50 border border-yellow-200 text-yellow-700' : 'bg-slate-50 border border-slate-100 text-slate-600'}`}
+                 >
+                   <Send className="w-4 h-4" />
+                   Rebroadcast
+                 </button>
                </div>
             </div>
           </motion.div>

@@ -38,6 +38,7 @@ export default function NGOLogin() {
   const [showForm, setShowForm] = useState(false);
   const [pendingDeleteRequestId, setPendingDeleteRequestId] = useState(null);
   const seenDelayByRequestRef = useRef({});
+  const seenCancelledByRequestRef = useRef({});
 
   // Get accurate browser location for the NGO form
   useEffect(() => {
@@ -241,6 +242,19 @@ export default function NGOLogin() {
                   seenDelayByRequestRef.current[req.id] = delayAt;
                 }
               }
+
+              if (liveRes?.data?.status === 'cancelled') {
+                const cancelKey = liveRes?.data?.updated_at || `${activeMatch.id}-cancelled`;
+                const lastCancel = seenCancelledByRequestRef.current[req.id];
+                if (lastCancel !== cancelKey) {
+                  addToast(
+                    `Volunteer cancelled for ${req.task_description.slice(0, 36)}${req.task_description.length > 36 ? '...' : ''}. Please rebroadcast.`,
+                    'warning'
+                  );
+                  seenCancelledByRequestRef.current[req.id] = cancelKey;
+                }
+              }
+
               updatedEntries[req.id] = { ...activeMatch, live: liveRes.data };
             } catch {
               updatedEntries[req.id] = activeMatch;
@@ -687,16 +701,20 @@ export default function NGOLogin() {
                         <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
                         <span className="text-[10px] font-bold text-rose-600">No GPS signal — volunteer may not be responding</span>
                       </div>
-                      <button
-                        onClick={() => matchInfo?.id && handleRebroadcast(matchInfo.id)}
-                        disabled={!matchInfo?.id}
-                        className="flex items-center space-x-1 px-2 py-1 bg-rose-500 text-white text-[9px] font-bold rounded-md hover:bg-rose-600 transition-colors"
-                      >
-                        <RotateCcw className="w-2.5 h-2.5" />
-                        <span>Re-broadcast</span>
-                      </button>
                     </div>
                   )}
+
+                  {/* Always-visible rebroadcast control */}
+                  <div className="flex items-center justify-end">
+                    <button
+                      onClick={() => matchInfo?.id && handleRebroadcast(matchInfo.id)}
+                      disabled={!matchInfo?.id}
+                      className="flex items-center space-x-1 px-2.5 py-1.5 bg-rose-500 text-white text-[10px] font-bold rounded-lg hover:bg-rose-600 transition-colors disabled:opacity-60"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Re-broadcast</span>
+                    </button>
+                  </div>
 
                   {/* Pending confirmation actions */}
                   {isPending && (
