@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { CheckCircle2, Navigation, MapPin, Phone, Info, ChevronRight } from 'lucide-react';
 import { MatchResult } from '../types';
@@ -15,6 +16,24 @@ const statusSteps = [
 ];
 
 export default function VolunteerConfirmation({ match, onDone }: VolunteerConfirmationProps) {
+  const [canCancel, setCanCancel] = useState(true);
+  const [timeLeft, setTimeLeft] = useState(120);
+
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      setCanCancel(false);
+      return;
+    }
+    const timerId = setInterval(() => {
+      setTimeLeft(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(timerId);
+  }, [timeLeft]);
+
+  const mins = Math.floor(timeLeft / 60);
+  const secs = timeLeft % 60;
+  const timeString = `${mins}:${secs.toString().padStart(2, '0')}`;
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -105,14 +124,17 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
         </div>
       </div>
 
-      <div className="p-10 pt-0 mt-auto">
-        <button 
-          onClick={onDone}
-          className="w-full py-5 bg-white border border-slate-200 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] text-slate-400 hover:text-slate-900 hover:border-slate-400 transition-all"
-        >
-          Decline / Return to Home
-        </button>
-      </div>
+            {canCancel && (
+        <div className="p-10 pt-0 mt-auto">
+          <button 
+            onClick={onDone}
+            className="w-full py-5 bg-white border border-slate-200 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] text-red-500 hover:text-red-700 hover:border-red-200 transition-all flex flex-col items-center gap-1"
+          >
+            <span>Cancel Mission</span>
+            <span className="text-[8px] text-slate-400">Window closes in {timeString}</span>
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 }

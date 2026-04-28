@@ -82,31 +82,33 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
         </AnimatePresence>
       </div>
 
-      <div className="flex items-center justify-between mb-10">
-        <div>
-          <h2 className="text-4xl font-bold tracking-tight text-slate-900">Agency Command</h2>
-          <p className="text-sm font-medium text-blue-600 uppercase tracking-widest mt-1">Silvercreek Flood Response Hub</p>
-        </div>
-        <button 
-          onClick={() => setIsAdding(true)}
-          className="bg-blue-600 text-white p-5 rounded-2xl shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95"
-        >
-          <Plus className="w-7 h-7" />
-        </button>
-      </div>
-
-      {/* Stats Rail */}
-      <div className="grid grid-cols-3 gap-6 mb-10">
-        {[
-          { label: 'Active Requests', value: requests.length, color: 'text-slate-900' },
-          { label: 'Total Matches', value: '12', color: 'text-blue-600' },
-          { label: 'En Route', value: '4', color: 'text-green-600' }
-        ].map((stat, i) => (
-          <div key={i} className="bg-white rounded-[1.5rem] p-6 border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-300 mb-2">{stat.label}</p>
-            <p className={cn("text-4xl font-black tracking-tight", stat.color)}>{stat.value}</p>
+      {/* Unified Header & Stats Box */}
+      <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm mb-10 relative z-10">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h2 className="text-4xl font-bold tracking-tight text-slate-900">Agency Command</h2>
+            <p className="text-sm font-medium text-blue-600 uppercase tracking-widest mt-1">Silvercreek Flood Response Hub</p>
           </div>
-        ))}
+          <button 
+            onClick={() => setIsAdding(true)}
+            className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-12 pt-6 border-t border-slate-100">
+          {[
+            { label: 'Active Requests', value: requests.length, color: 'text-slate-900' },
+            { label: 'Total Matches', value: '12', color: 'text-blue-600' },
+            { label: 'En Route', value: '4', color: 'text-green-600' }
+          ].map((stat, i) => (
+            <div key={i}>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{stat.label}</p>
+              <p className={`text-3xl font-black tracking-tight ${stat.color}`}>{stat.value}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-4 pb-12">
