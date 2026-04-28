@@ -18,6 +18,7 @@ function getStoredActiveMission() {
           request_id: parsed.request_id != null ? Number(parsed.request_id) : null,
           score: parsed.score != null ? Number(parsed.score) : null,
           created_at: parsed.created_at || null,
+          accepted_at: parsed.accepted_at || null,
         };
       }
     } catch {
@@ -60,6 +61,42 @@ function getCancelSecondsRemaining(createdAt) {
   const acceptedAtMs = new Date(createdAt).getTime();
   if (!Number.isFinite(acceptedAtMs)) return 0;
   return Math.max(0, Math.ceil((acceptedAtMs + 120000 - Date.now()) / 1000));
+}
+
+function getAcceptedAt(matchData) {
+  return matchData?.accepted_at || matchData?.created_at || null;
+}
+
+function getStoredAcceptedAt(matchId) {
+  const rawMission = localStorage.getItem(ACTIVE_MISSION_STORAGE_KEY);
+  if (!rawMission) return null;
+
+  try {
+    const parsed = JSON.parse(rawMission);
+    if (Number(parsed?.match_id) !== Number(matchId)) return null;
+    return parsed.accepted_at || parsed.created_at || null;
+  } catch {
+    return null;
+  }
+}
+
+function storeAcceptedAtFallback(matchId, acceptedAt) {
+  if (!matchId || !acceptedAt) return;
+
+  let storedMission = {};
+  try {
+    storedMission = JSON.parse(localStorage.getItem(ACTIVE_MISSION_STORAGE_KEY) || '{}') || {};
+  } catch {
+    storedMission = {};
+  }
+
+  if (storedMission.match_id && Number(storedMission.match_id) !== Number(matchId)) return;
+
+  localStorage.setItem(ACTIVE_MISSION_STORAGE_KEY, JSON.stringify({
+    ...storedMission,
+    match_id: Number(matchId),
+    accepted_at: storedMission.accepted_at || acceptedAt,
+  }));
 }
 
 function formatCancelTime(seconds) {
@@ -169,19 +206,30 @@ function PhonePrompt({ onSubmit, onCancel }) {
 
 // ─── Live Mission Tracking Panel ───────────────────────────────
 function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFinished }) {
+  const acceptedAtRef = useRef(
+    getAcceptedAt(matchData) ||
+    getStoredAcceptedAt(matchId) ||
+    new Date().toISOString()
+  );
   const [liveStatus, setLiveStatus] = useState(null);
   const [isDelaying, setIsDelaying] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [delayNotified, setDelayNotified] = useState(false);
   const [cancelSecondsRemaining, setCancelSecondsRemaining] = useState(() => (
-    getCancelSecondsRemaining(matchData?.created_at)
+    getCancelSecondsRemaining(acceptedAtRef.current)
   ));
   const pingIntervalRef = useRef(null);
   const statusIntervalRef = useRef(null);
   const volunteerToken = localStorage.getItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY) || '';
   const volunteerHeaders = volunteerToken ? { 'X-Volunteer-Token': volunteerToken } : {};
-  const acceptedAt = liveStatus?.created_at || matchData?.created_at;
+  if (liveStatus?.created_at && !getAcceptedAt(matchData)) {
+    acceptedAtRef.current = liveStatus.created_at;
+  }
+
+  useEffect(() => {
+    storeAcceptedAtFallback(matchId, acceptedAtRef.current);
+  }, [matchId]);
 
   // Send GPS pings every 15 seconds
   useEffect(() => {
@@ -229,13 +277,13 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
 
   useEffect(() => {
     const updateCancelWindow = () => {
-      setCancelSecondsRemaining(getCancelSecondsRemaining(acceptedAt));
+      setCancelSecondsRemaining(getCancelSecondsRemaining(acceptedAtRef.current));
     };
 
     updateCancelWindow();
     const interval = setInterval(updateCancelWindow, 1000);
     return () => clearInterval(interval);
-  }, [acceptedAt]);
+  }, [matchId]);
 
   const handleDelay = async () => {
     setIsDelaying(true);
@@ -550,7 +598,8 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
           volunteer_id: volunteerId || undefined,
           score: restoredScore != null ? restoredScore : 0,
           status: live.status,
-          created_at: live.created_at,
+          created_at: live.created_at || storedMission.created_at,
+          accepted_at: storedMission.accepted_at,
           eta_minutes: live.eta_minutes,
           eta_text: live.eta_text,
           request: live.request,
@@ -586,7 +635,8 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
           'X-Volunteer-Token': localStorage.getItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY) || '',
         },
       });
-      setConfirmedMatch(res.data);
+      const acceptedAt = new Date().toISOString();
+      setConfirmedMatch({ ...res.data, accepted_at: acceptedAt });
       localStorage.setItem(ACTIVE_MATCH_STORAGE_KEY, String(res.data.id));
       localStorage.setItem(ACTIVE_MISSION_STORAGE_KEY, JSON.stringify({
         match_id: res.data.id,
@@ -594,6 +644,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         request_id: res.data.request_id,
         score: res.data.score,
         created_at: res.data.created_at,
+        accepted_at: acceptedAt,
       }));
       setShowPhonePrompt(false);
     } catch (error) {

@@ -162,6 +162,7 @@ def confirm_match(
         req.lng,
     )
 
+    now = datetime.now(timezone.utc)
     new_match = Match(
         volunteer_id=vol.id,
         request_id=req.id,
@@ -169,6 +170,8 @@ def confirm_match(
         status="en_route",
         eta_minutes=eta_result["duration_minutes"],
         eta_text=eta_result["duration_text"],
+        created_at=now,
+        updated_at=now,
     )
     req.status = "matched"
     
