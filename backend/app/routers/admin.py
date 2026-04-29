@@ -117,16 +117,17 @@ def delete_ngo_account(ngo_id: int, db: Session = Depends(get_db), admin: AdminA
     if not ngo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NGO account not found")
 
-    ngo_request_ids = [
-        request_id
-        for (request_id,) in db.query(NGORequest.id).filter(NGORequest.ngo_name == ngo.ngo_name).all()
-    ]
+    # FIXED: Uses ILIKE and strip() to aggressively catch all mismatched mock data
+    ngo_name_pattern = f"%{ngo.ngo_name.strip()}%"
+    
+    ngo_requests = db.query(NGORequest).filter(NGORequest.ngo_name.ilike(ngo_name_pattern)).all()
+    ngo_request_ids = [req.id for req in ngo_requests]
 
     if ngo_request_ids:
         db.query(Match).filter(Match.request_id.in_(ngo_request_ids)).delete(synchronize_session=False)
+        db.query(NGORequest).filter(NGORequest.id.in_(ngo_request_ids)).delete(synchronize_session=False)
 
-    db.query(NGORequest).filter(NGORequest.id.in_(ngo_request_ids)).delete(synchronize_session=False)
-    db.query(NGORegistration).filter(NGORegistration.ngo_name == ngo.ngo_name).delete(synchronize_session=False)
+    db.query(NGORegistration).filter(NGORegistration.ngo_name.ilike(ngo_name_pattern)).delete(synchronize_session=False)
 
     db.delete(ngo)
     db.commit()

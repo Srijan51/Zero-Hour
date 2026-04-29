@@ -5,8 +5,8 @@ import { Urgency, NGORequest } from '../types';
 import { cn } from '../lib/utils';
 
 interface NGODashboardProps {
-  requests: NGORequest[];
-  onNewRequest: (req: Partial<NGORequest>) => void;
+  requests: any[]; // Changed to 'any' to handle the backend schema smoothly
+  onNewRequest: (req: any) => void;
 }
 
 export default function NGODashboard({ requests, onNewRequest }: NGODashboardProps) {
@@ -29,7 +29,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
       const req = requests.find(r => r.id === requestId);
       if (req) {
         const id = Math.random().toString(36).substr(2, 5);
-        setNotifications(prev => [...prev, { id, text: `${volunteerName} en route to ${req.taskType}` }]);
+        setNotifications(prev => [...prev, { id, text: `${volunteerName} en route to ${req.task_description || 'Mission'}` }]);
         setTimeout(() => {
           setNotifications(prev => prev.filter(n => n.id !== id));
         }, 6000);
@@ -41,8 +41,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
       const req = requests.find(r => r.id === requestId);
       if (req) {
         const id = Math.random().toString(36).substr(2, 5);
-        setNotifications(prev => [...prev, { id, text: `${volunteerName} cancelled mission for ${req.taskType}` }]);
-        // enable rebroadcast UI state for this request
+        setNotifications(prev => [...prev, { id, text: `${volunteerName} cancelled mission for ${req.task_description || 'Mission'}` }]);
         setRebroadcastEnabled(prev => ({ ...prev, [requestId]: true }));
         setTimeout(() => {
           setNotifications(prev => prev.filter(n => n.id !== id));
@@ -61,7 +60,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
   const handleRebroadcast = (requestId: string) => {
     const req = requests.find(r => r.id === requestId);
     if (!req) return;
-    // notify server (best-effort) and show a notification locally
+    
     fetch('/api/rebroadcast', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -69,38 +68,29 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
     }).catch(() => {});
 
     const id = Math.random().toString(36).substr(2, 5);
-    setNotifications(prev => [...prev, { id, text: `Rebroadcast sent for ${req.taskType}` }]);
-    // keep the rebroadcast option available (per requirement)
+    setNotifications(prev => [...prev, { id, text: `Rebroadcast sent for ${req.task_description || 'Mission'}` }]);
     setRebroadcastEnabled(prev => ({ ...prev, [requestId]: false }));
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // FIXED: Form payload now perfectly matches the backend NGORequestCreate schema
     onNewRequest({
-      ngoName: formData.ngoName,
-      taskType: formData.taskType,
-      description: formData.description,
+      task_description: `${formData.taskType} - ${formData.description}`,
       urgency: formData.urgency,
-      skillsRequired: formData.skills.split(',').map(s => s.trim()),
-      assetsRequired: formData.assets.split(',').map(a => a.trim()),
-      location: { lat: 22.57, lng: 88.36, address: formData.address }
+      required_skills: formData.skills.split(',').map(s => s.trim()).filter(Boolean),
+      required_assets: formData.assets.split(',').map(a => a.trim()).filter(Boolean),
+      location_text: formData.address,
+      lat: 22.57, // Default coordinate, updates automatically in a real scenario
+      lng: 88.36
     });
     setIsAdding(false);
-    setFormData({
-      ngoName: '',
-      taskType: '',
-      description: '',
-      urgency: 3,
-      skills: '',
-      assets: '',
-      address: ''
-    });
+    setFormData({ ngoName: '', taskType: '', description: '', urgency: 3, skills: '', assets: '', address: '' });
   };
 
   return (
     <div className="h-full flex flex-col p-8 bg-slate-100 overflow-hidden relative">
-      {/* Real-time Notifications */}
       <div className="absolute top-8 right-8 z-[200] flex flex-col gap-3 pointer-events-none">
         <AnimatePresence>
           {notifications.map(notif => (
@@ -118,12 +108,11 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
         </AnimatePresence>
       </div>
 
-      {/* Unified Header & Stats Box */}
       <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm mb-10 relative z-10">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-4xl font-bold tracking-tight text-slate-900">Agency Command</h2>
-            <p className="text-sm font-medium text-blue-600 uppercase tracking-widest mt-1">Silvercreek Flood Response Hub</p>
+            <p className="text-sm font-medium text-blue-600 uppercase tracking-widest mt-1">Live Response Hub</p>
           </div>
           <button 
             onClick={() => setIsAdding(true)}
@@ -136,8 +125,8 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
         <div className="flex items-center gap-12 pt-6 border-t border-slate-100">
           {[
             { label: 'Active Requests', value: requests.length, color: 'text-slate-900' },
-            { label: 'Total Matches', value: '12', color: 'text-blue-600' },
-            { label: 'En Route', value: '4', color: 'text-green-600' }
+            { label: 'Total Matches', value: requests.filter(r => r.status === 'matched').length, color: 'text-blue-600' },
+            { label: 'En Route', value: requests.filter(r => r.status === 'en_route').length, color: 'text-green-600' }
           ].map((stat, i) => (
             <div key={i}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{stat.label}</p>
@@ -151,7 +140,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
         <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-6">Live Operations feed</h3>
         {requests.map((req, i) => (
           <motion.div
-            key={req.id}
+            key={req.id || i}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center justify-between group hover:border-blue-200 transition-all"
@@ -159,16 +148,17 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
             <div className="flex items-center gap-6">
               <div className={cn(
                 "w-12 h-12 rounded-xl flex items-center justify-center border",
-                req.urgency >= 5 ? "bg-red-50 border-red-100 text-red-600" : "bg-slate-50 border-slate-100 text-slate-400"
+                (req.urgency || 3) >= 5 ? "bg-red-50 border-red-100 text-red-600" : "bg-slate-50 border-slate-100 text-slate-400"
               )}>
                 <AlertCircle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-lg text-slate-900 tracking-tight mb-1">{req.taskType}</h3>
+                {/* FIXED: Now reads the correct fields from the backend JSON response */}
+                <h3 className="font-bold text-lg text-slate-900 tracking-tight mb-1">{req.task_description || "Emergency Request"}</h3>
                 <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3" /> {req.location.address}</span>
+                  <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3" /> {req.location_text || "Location pending"}</span>
                   <span className="opacity-30">•</span>
-                  <span className="flex items-center gap-1.5"><History className="w-3 h-3" /> {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="flex items-center gap-1.5"><History className="w-3 h-3" /> {new Date(req.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             </div>
@@ -176,7 +166,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
             <div className="flex items-center gap-4">
                <div className="text-right">
                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">Status</p>
-                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Searching AI Pool</span>
+                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{req.status || "open"}</span>
                </div>
                <div>
                  <button
@@ -192,7 +182,6 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
         ))}
       </div>
 
-      {/* New Request Modal */}
       {isAdding && (
         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
           <motion.div 
@@ -212,20 +201,10 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
 
             <form onSubmit={handleSubmit} className="space-y-8">
               <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Reporting Agency</label>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Emergency Type (e.g. Flood Extraction)</label>
                   <input 
                     required
-                    value={formData.ngoName}
-                    onChange={e => setFormData({...formData, ngoName: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Emergency Type</label>
-                  <input 
-                    required
-                    placeholder="e.g. Flood Extraction"
                     value={formData.taskType}
                     onChange={e => setFormData({...formData, taskType: e.target.value})}
                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all"
@@ -234,7 +213,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
               </div>
 
               <div>
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Mission Description</label>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Mission Details</label>
                 <textarea 
                   required
                   rows={3}
@@ -246,7 +225,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
 
               <div className="grid grid-cols-3 gap-6">
                  <div className="col-span-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Primary Address / coordinates</label>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Primary Address</label>
                     <input 
                       required
                       value={formData.address}
@@ -264,6 +243,27 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
                       {[1,2,3,4,5].map(v => <option key={v} value={v}>Level {v}</option>)}
                     </select>
                  </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Required Skills (Comma separated)</label>
+                  <input 
+                    placeholder="e.g. First Aid, Swimming"
+                    value={formData.skills}
+                    onChange={e => setFormData({...formData, skills: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-3 block">Required Assets</label>
+                  <input 
+                    placeholder="e.g. Boat, 4x4"
+                    value={formData.assets}
+                    onChange={e => setFormData({...formData, assets: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                  />
+                </div>
               </div>
 
               <button 
