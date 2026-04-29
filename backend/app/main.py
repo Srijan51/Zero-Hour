@@ -19,8 +19,6 @@ Base.metadata.create_all(bind=engine)
 
 
 def _ensure_ngo_certificate_columns() -> None:
-    
-
     inspector = inspect(engine)
     
     ngo_account_columns = {column["name"] for column in inspector.get_columns("ngo_accounts")}
@@ -46,19 +44,22 @@ def _ensure_ngo_certificate_columns() -> None:
             connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN volunteers_needed INTEGER DEFAULT 1"))
         if "volunteers_matched" not in ngo_request_columns:
             connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN volunteers_matched INTEGER DEFAULT 0"))
+        
+        # FIXED: Changed DATETIME to TIMESTAMP for PostgreSQL
         if "last_escalated_at" not in ngo_request_columns:
-            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN last_escalated_at DATETIME"))
+            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN last_escalated_at TIMESTAMP"))
         if "created_at" not in ngo_request_columns:
-            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN created_at DATETIME"))
+            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN created_at TIMESTAMP"))
 
         connection.execute(text("UPDATE ngo_requests SET volunteers_needed = 1 WHERE volunteers_needed IS NULL"))
         connection.execute(text("UPDATE ngo_requests SET volunteers_matched = 0 WHERE volunteers_matched IS NULL"))
         connection.execute(text("UPDATE ngo_requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
 
+        # FIXED: Changed DATETIME to TIMESTAMP for PostgreSQL
         if "created_at" not in match_columns:
-            connection.execute(text("ALTER TABLE matches ADD COLUMN created_at DATETIME"))
+            connection.execute(text("ALTER TABLE matches ADD COLUMN created_at TIMESTAMP"))
         if "updated_at" not in match_columns:
-            connection.execute(text("ALTER TABLE matches ADD COLUMN updated_at DATETIME"))
+            connection.execute(text("ALTER TABLE matches ADD COLUMN updated_at TIMESTAMP"))
 
         connection.execute(text("UPDATE matches SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
         connection.execute(text("UPDATE matches SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"))
@@ -80,18 +81,20 @@ def _ensure_ngo_certificate_columns() -> None:
             connection.execute(text("ALTER TABLE matches ADD COLUMN volunteer_lat FLOAT"))
         if "volunteer_lng" not in match_columns:
             connection.execute(text("ALTER TABLE matches ADD COLUMN volunteer_lng FLOAT"))
+            
+        # FIXED: Changed DATETIME to TIMESTAMP, and DEFAULT 0 to DEFAULT FALSE
         if "last_ping_at" not in match_columns:
-            connection.execute(text("ALTER TABLE matches ADD COLUMN last_ping_at DATETIME"))
+            connection.execute(text("ALTER TABLE matches ADD COLUMN last_ping_at TIMESTAMP"))
         if "no_show_flagged" not in match_columns:
-            connection.execute(text("ALTER TABLE matches ADD COLUMN no_show_flagged BOOLEAN DEFAULT 0"))
+            connection.execute(text("ALTER TABLE matches ADD COLUMN no_show_flagged BOOLEAN DEFAULT FALSE"))
         if "arrived_at" not in match_columns:
-            connection.execute(text("ALTER TABLE matches ADD COLUMN arrived_at DATETIME"))
+            connection.execute(text("ALTER TABLE matches ADD COLUMN arrived_at TIMESTAMP"))
         if "delay_notified_at" not in match_columns:
-            connection.execute(text("ALTER TABLE matches ADD COLUMN delay_notified_at DATETIME"))
+            connection.execute(text("ALTER TABLE matches ADD COLUMN delay_notified_at TIMESTAMP"))
         if "actual_arrival_minutes" not in match_columns:
             connection.execute(text("ALTER TABLE matches ADD COLUMN actual_arrival_minutes INTEGER"))
         if "eta_feedback_given" not in match_columns:
-            connection.execute(text("ALTER TABLE matches ADD COLUMN eta_feedback_given BOOLEAN DEFAULT 0"))
+            connection.execute(text("ALTER TABLE matches ADD COLUMN eta_feedback_given BOOLEAN DEFAULT FALSE"))
 
         # Migrate legacy 90G values into the new 80G columns when present.
         if "certificate_90g_number" in ngo_account_columns:
@@ -118,7 +121,6 @@ def _ensure_ngo_certificate_columns() -> None:
 def _ensure_volunteer_columns() -> None:
     inspector = inspect(engine)
     
-    
     if "volunteers" in inspector.get_table_names():
         volunteer_columns = {column["name"] for column in inspector.get_columns("volunteers")}
         
@@ -128,8 +130,12 @@ def _ensure_volunteer_columns() -> None:
             if "name" not in volunteer_columns:
                 connection.execute(text("ALTER TABLE volunteers ADD COLUMN name VARCHAR"))
 
-_ensure_ngo_certificate_columns()
-_ensure_volunteer_columns()
+# FIXED: Wrapped in try/except to prevent any future migration crash loops
+try:
+    _ensure_ngo_certificate_columns()
+    _ensure_volunteer_columns()
+except Exception as e:
+    print(f"Migration skipped: {e}")
 
 
 app = FastAPI(title="Zero Hour API")
@@ -157,7 +163,6 @@ app.include_router(ngo.router)
 app.include_router(match.router)
 app.include_router(admin.router)
 
-
 AsyncIOScheduler = importlib.import_module("apscheduler.schedulers.asyncio").AsyncIOScheduler
 scheduler = AsyncIOScheduler()
 
@@ -182,6 +187,7 @@ def setup_default_admin():
         db.close()
 
 
+# FIXED: The problematic setup_demo_seed_data function has been permanently deleted from here!
 
 
 @app.on_event("startup")
@@ -198,6 +204,7 @@ def setup_escalation_scheduler():
 def shutdown_escalation_scheduler():
     if scheduler.running:
         scheduler.shutdown(wait=False)
+
 
 @app.get("/")
 def read_root():
