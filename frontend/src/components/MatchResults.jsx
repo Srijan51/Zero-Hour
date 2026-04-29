@@ -717,47 +717,105 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
       )}
       <div className="w-12 h-1.5 bg-slate-300/50 rounded-full mx-auto mb-5"></div>
       <h2 className="text-2xl font-extrabold text-slate-800 mb-4 px-2 tracking-tight">Top NGO Matches</h2>
-      
-      <div className="overflow-y-auto pb-4 space-y-4 px-2 custom-scrollbar">
-        {matches.map((match, idx) => (
-          <div key={idx} className="p-5 bg-white/80 backdrop-blur-md border border-white/60 shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-2xl flex flex-col transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="font-bold text-slate-900 text-lg leading-tight">{match.ngo_name}</h3>
-              <span className="px-2.5 py-1 bg-primary-light/50 text-primary-hover text-[11px] font-bold rounded-full flex items-center shadow-sm">
-                Match {Number(match.match_score || 0).toFixed(1)}%
-              </span>
-            </div>
-            <p className="text-sm text-slate-600 mb-2">{match.task_description}</p>
 
-            {/* Request location */}
-            {match.location_text && (
-              <div className="flex items-center space-x-1.5 mb-3">
-                <MapPin className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-                <p className="text-xs text-blue-600 font-medium truncate">{match.location_text}</p>
+      {/* Pinned top matches (highest score) */}
+      {matches && matches.length > 0 && (() => {
+        const sorted = [...matches].sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+        const topCount = Math.min(3, sorted.length);
+        const topMatches = sorted.slice(0, topCount);
+        const remaining = sorted.slice(topCount);
+
+        return (
+          <>
+            <div className="mb-3 px-2">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-slate-600">Top Picks</h3>
+                <span className="text-[11px] text-slate-400">Top matches stay pinned for quick access</span>
               </div>
-            )}
-            
-            {(match.required_skills.length > 0 || match.required_assets.length > 0) && (
-              <div className="flex flex-wrap gap-1 mb-3">
-                {match.required_skills.map(s => (
-                  <span key={s} className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] rounded-full">{s}</span>
-                ))}
-                {match.required_assets.map(a => (
-                   <span key={a} className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] rounded-full">{a}</span>
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {topMatches.map((match) => (
+                  <div key={`top-${match.id || match.request_id || match.ngo_name}`} className="min-w-[220px] p-3 bg-white/90 rounded-xl border border-white/60 shadow-sm flex-shrink-0">
+                    <div className="flex items-start justify-between mb-1">
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm leading-tight truncate">{match.ngo_name}</h4>
+                        <p className="text-xs text-slate-500 truncate max-w-[190px]">{match.task_description}</p>
+                      </div>
+                      <span className="px-2 py-1 bg-primary-light/40 text-primary-hover text-[11px] font-bold rounded-full">{Number(match.match_score || 0).toFixed(1)}%</span>
+                    </div>
+                    <div className="mt-2">
+                      <button
+                        onClick={() => handleAcceptClick(match.id || match.request_id)}
+                        disabled={isRestoringMission}
+                        className="w-full py-2 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-70 disabled:cursor-wait transition-all text-white rounded-xl text-xs font-bold"
+                      >
+                        Accept
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
-            )}
-            
-            <button 
-              onClick={() => handleAcceptClick(match.id)}
-              disabled={isRestoringMission}
-              className="mt-3 w-full py-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-70 disabled:cursor-wait transition-all text-white rounded-xl text-sm font-bold shadow-[0_4px_14px_rgba(0,0,0,0.15)] active:scale-95"
-            >
-              Accept Mission
-            </button>
-          </div>
-        ))}
-      </div>
+            </div>
+
+            <div className="overflow-y-auto pb-4 space-y-4 px-2 custom-scrollbar">
+              {remaining.length > 0 ? (
+                remaining.map((match, idx) => (
+                  <div key={idx} className="p-5 bg-white/80 backdrop-blur-md border border-white/60 shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-2xl flex flex-col transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-bold text-slate-900 text-lg leading-tight">{match.ngo_name}</h3>
+                      <span className="px-2.5 py-1 bg-primary-light/50 text-primary-hover text-[11px] font-bold rounded-full flex items-center shadow-sm">
+                        Match {Number(match.match_score || 0).toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-600 mb-2">{match.task_description}</p>
+
+                    {/* Request location */}
+                    {match.location_text && (
+                      <div className="flex items-center space-x-1.5 mb-3">
+                        <MapPin className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                        <p className="text-xs text-blue-600 font-medium truncate">{match.location_text}</p>
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => handleAcceptClick(match.id)}
+                      disabled={isRestoringMission}
+                      className="mt-3 w-full py-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-70 disabled:cursor-wait transition-all text-white rounded-xl text-sm font-bold shadow-[0_4px_14px_rgba(0,0,0,0.15)] active:scale-95"
+                    >
+                      Accept Mission
+                    </button>
+                  </div>
+                ))
+              ) : (
+                matches.map((match, idx) => (
+                  <div key={idx} className="p-5 bg-white/80 backdrop-blur-md border border-white/60 shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-2xl flex flex-col transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-bold text-slate-900 text-lg leading-tight">{match.ngo_name}</h3>
+                      <span className="px-2.5 py-1 bg-primary-light/50 text-primary-hover text-[11px] font-bold rounded-full flex items-center shadow-sm">
+                        Match {Number(match.match_score || 0).toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-600 mb-2">{match.task_description}</p>
+
+                    {/* Request location */}
+                    {match.location_text && (
+                      <div className="flex items-center space-x-1.5 mb-3">
+                        <MapPin className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                        <p className="text-xs text-blue-600 font-medium truncate">{match.location_text}</p>
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => handleAcceptClick(match.id)}
+                      disabled={isRestoringMission}
+                      className="mt-3 w-full py-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-70 disabled:cursor-wait transition-all text-white rounded-xl text-sm font-bold shadow-[0_4px_14px_rgba(0,0,0,0.15)] active:scale-95"
+                    >
+                      Accept Mission
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        );
+      })()}
       <button className="text-sm text-slate-400 mt-2" onClick={onReset}>Cancel</button>
     </div>
   );

@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "server:dev": "tsx server.ts",
+    "frontend:dev": "npm --prefix frontend run dev",
     "build": "vite build",
     "start": "node server.ts",
     "preview": "vite preview",

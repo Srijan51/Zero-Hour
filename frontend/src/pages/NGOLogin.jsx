@@ -22,6 +22,15 @@ const ETA_FEEDBACK_OPTIONS = {
   early: { label: 'Early', multiplier: 0.8, on_time: false },
 };
 
+function buildDirectionsUrlFrom(volLat, volLng, req) {
+  const dest = req.location_text?.trim() || (req.lat !== undefined && req.lng !== undefined ? `${req.lat},${req.lng}` : '');
+  const params = new URLSearchParams({ api: '1', destination: dest, travelmode: 'driving', dir_action: 'navigate' });
+  if (volLat !== undefined && volLng !== undefined && volLat !== null && volLng !== null) {
+    params.set('origin', `${volLat},${volLng}`);
+  }
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 export default function NGOLogin() {
   const [credentials, setCredentials] = useState({ identifier: '', password: '' });
   const [token, setToken] = useState(localStorage.getItem('ngoAuthToken') || '');
@@ -268,7 +277,7 @@ export default function NGOLogin() {
     if (!token) return;
 
     const fetchMatchData = async () => {
-      const activeRequests = requests.filter(r => ['matched', 'pending_confirmation'].includes(r.status));
+      const activeRequests = requests.filter(r => !['completed', 'cancelled'].includes(r.status));
       const activeRequestIds = new Set(activeRequests.map((req) => req.id));
       const updatedEntries = {};
       for (const req of activeRequests) {
@@ -346,10 +355,17 @@ export default function NGOLogin() {
     }
   };
 
-  const handleRebroadcast = async (matchId) => {
+  const handleRebroadcast = async (matchId, requestId) => {
     try {
-      setPendingAction(`rebroadcast-${matchId}`);
-      await api.post(`/match/${matchId}/rebroadcast`, {}, { headers: authHeaders });
+      const actionKey = matchId ? `rebroadcast-${matchId}` : `rebroadcast-request-${requestId}`;
+      setPendingAction(actionKey);
+      if (matchId) {
+        await api.post(`/match/${matchId}/rebroadcast`, {}, { headers: authHeaders });
+      } else if (requestId) {
+        await api.post('/api/rebroadcast', { requestId }, { headers: authHeaders });
+      } else {
+        throw new Error('No match or request specified');
+      }
       addToast('Request re-broadcasted for new volunteers.', 'info');
       fetchRequests();
     } catch (err) {
@@ -657,8 +673,8 @@ export default function NGOLogin() {
           {requests.map((req, idx) => {
             const matchInfo = matchDataMap[req.id];
             const live = matchInfo?.live;
-            const isMatched = ['matched', 'pending_confirmation'].includes(req.status);
-            const isPending = req.status === 'pending_confirmation';
+            const isMatched = Boolean(matchInfo?.id);
+            const isPending = live?.status === 'pending_confirmation' || req.status === 'pending_confirmation';
             const isCompleted = req.status === 'completed';
 
             return (
@@ -805,15 +821,28 @@ export default function NGOLogin() {
                     </div>
                   )}
 
-                  {/* Always-visible rebroadcast control */}
-                  <div className="flex items-center justify-end">
+                  {/* Live route (open volunteer -> request directions) */}
+                  <div className="mt-2">
+                    <a
+                      href={buildDirectionsUrlFrom(live?.volunteer_lat, live?.volunteer_lng, req)}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex items-center space-x-1 px-3 py-2 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 no-underline hover:bg-slate-200 transition-colors"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      <span>Live Route</span>
+                    </a>
+                  </div>
+
+                  {/* Always-visible rebroadcast control (falls back to request-level rebroadcast) */}
+                  <div className="flex items-center justify-end mt-2">
                     <button
-                      onClick={() => matchInfo?.id && handleRebroadcast(matchInfo.id)}
-                      disabled={!matchInfo?.id}
+                      onClick={() => handleRebroadcast(matchInfo?.id, req.id)}
+                      disabled={pendingAction === `rebroadcast-${matchInfo?.id}` || pendingAction === `rebroadcast-request-${req.id}`}
                       className="flex items-center space-x-1 px-2.5 py-1.5 bg-rose-500 text-white text-[10px] font-bold rounded-lg hover:bg-rose-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {pendingAction === `rebroadcast-${matchInfo?.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-                      <span>{pendingAction === `rebroadcast-${matchInfo?.id}` ? 'Re-broadcasting...' : 'Re-broadcast'}</span>
+                      {(pendingAction === `rebroadcast-${matchInfo?.id}` || pendingAction === `rebroadcast-request-${req.id}`) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                      <span>{(pendingAction === `rebroadcast-${matchInfo?.id}` || pendingAction === `rebroadcast-request-${req.id}`) ? 'Re-broadcasting...' : 'Re-broadcast'}</span>
                     </button>
                   </div>
 
@@ -895,6 +924,14 @@ export default function NGOLogin() {
                       <span>Route</span>
                     </a>
                   )}
+                  <button
+                    onClick={() => handleRebroadcast(null, req.id)}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-rose-500 text-white text-[10px] font-bold rounded-lg border border-rose-600 hover:bg-rose-600 transition-colors active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={pendingAction === `rebroadcast-request-${req.id}`}
+                  >
+                    {pendingAction === `rebroadcast-request-${req.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                    <span>{pendingAction === `rebroadcast-request-${req.id}` ? 'Re-broadcasting...' : 'Re-broadcast'}</span>
+                  </button>
                   <button
                     onClick={() => requestDeleteRequest(req.id)}
                     className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-white text-rose-400 text-[10px] font-bold rounded-lg border border-rose-100 hover:bg-rose-50 hover:text-rose-500 transition-colors active:scale-95"
