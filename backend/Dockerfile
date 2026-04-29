@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./app ./app
 
 
-CMD sh -c "python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
