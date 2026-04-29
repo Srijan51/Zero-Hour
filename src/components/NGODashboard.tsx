@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, MapPin, Send, History, AlertCircle, UserCheck } from 'lucide-react';
-import { Urgency, NGORequest } from '../types';
+import api from '../services/api';
 import { cn } from '../lib/utils';
 
 interface NGODashboardProps {
-  requests: any[]; // Changed to 'any' to handle the backend schema smoothly
+  requests: any[]; 
   onNewRequest: (req: any) => void;
 }
 
@@ -13,76 +13,68 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
   const [isAdding, setIsAdding] = useState(false);
   const [notifications, setNotifications] = useState<{id: string, text: string}[]>([]);
   const [rebroadcastEnabled, setRebroadcastEnabled] = useState<Record<string, boolean>>({});
+  
+  const [liveRequests, setLiveRequests] = useState<any[]>(requests);
+
   const [formData, setFormData] = useState({
     ngoName: '',
     taskType: '',
     description: '',
-    urgency: 3 as Urgency,
+    urgency: 3,
     skills: '',
     assets: '',
     address: ''
   });
 
   useEffect(() => {
-    const handleDispatch = (e: any) => {
-      const { volunteerName, requestId } = e.detail;
-      const req = requests.find(r => r.id === requestId);
-      if (req) {
-        const id = Math.random().toString(36).substr(2, 5);
-        setNotifications(prev => [...prev, { id, text: `${volunteerName} en route to ${req.task_description || 'Mission'}` }]);
-        setTimeout(() => {
-          setNotifications(prev => prev.filter(n => n.id !== id));
-        }, 6000);
-      }
-    };
-
-    const handleCancel = (e: any) => {
-      const { volunteerName, requestId } = e.detail;
-      const req = requests.find(r => r.id === requestId);
-      if (req) {
-        const id = Math.random().toString(36).substr(2, 5);
-        setNotifications(prev => [...prev, { id, text: `${volunteerName} cancelled mission for ${req.task_description || 'Mission'}` }]);
-        setRebroadcastEnabled(prev => ({ ...prev, [requestId]: true }));
-        setTimeout(() => {
-          setNotifications(prev => prev.filter(n => n.id !== id));
-        }, 6000);
-      }
-    };
-
-    window.addEventListener('volunteer-dispatched', handleDispatch as any);
-    window.addEventListener('volunteer-cancelled', handleCancel as any);
-    return () => {
-      window.removeEventListener('volunteer-dispatched', handleDispatch as any);
-      window.removeEventListener('volunteer-cancelled', handleCancel as any);
-    };
+    setLiveRequests(requests);
   }, [requests]);
 
-  const handleRebroadcast = (requestId: string) => {
-    const req = requests.find(r => r.id === requestId);
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const { data } = await api.get('/ngo/requests', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setLiveRequests(data);
+      } catch (error) {
+        // silently fail on background poll
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleRebroadcast = async (requestId: string) => {
+    const req = liveRequests.find(r => r.id === requestId);
     if (!req) return;
     
-    fetch('/api/rebroadcast', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId })
-    }).catch(() => {});
-
-    const id = Math.random().toString(36).substr(2, 5);
-    setNotifications(prev => [...prev, { id, text: `Rebroadcast sent for ${req.task_description || 'Mission'}` }]);
-    setRebroadcastEnabled(prev => ({ ...prev, [requestId]: false }));
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
+    try {
+      const token = localStorage.getItem('token');
+      await api.post(`/match/${requestId}/rebroadcast`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const id = Math.random().toString(36).substr(2, 5);
+      setNotifications(prev => [...prev, { id, text: `Rebroadcast sent for ${req.task_description || 'Mission'}` }]);
+      setRebroadcastEnabled(prev => ({ ...prev, [requestId]: false }));
+      
+      setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // FIXED: Form payload now perfectly matches the backend NGORequestCreate schema
     onNewRequest({
       task_description: `${formData.taskType} - ${formData.description}`,
       urgency: formData.urgency,
       required_skills: formData.skills.split(',').map(s => s.trim()).filter(Boolean),
       required_assets: formData.assets.split(',').map(a => a.trim()).filter(Boolean),
       location_text: formData.address,
-      lat: 22.57, // Default coordinate, updates automatically in a real scenario
+      lat: 22.57, 
       lng: 88.36
     });
     setIsAdding(false);
@@ -124,9 +116,9 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
 
         <div className="flex items-center gap-12 pt-6 border-t border-slate-100">
           {[
-            { label: 'Active Requests', value: requests.length, color: 'text-slate-900' },
-            { label: 'Total Matches', value: requests.filter(r => r.status === 'matched').length, color: 'text-blue-600' },
-            { label: 'En Route', value: requests.filter(r => r.status === 'en_route').length, color: 'text-green-600' }
+            { label: 'Active Requests', value: liveRequests.length, color: 'text-slate-900' },
+            { label: 'Total Matches', value: liveRequests.filter(r => r.status === 'matched').length, color: 'text-blue-600' },
+            { label: 'Pending Conf.', value: liveRequests.filter(r => r.status === 'pending_confirmation').length, color: 'text-yellow-600' }
           ].map((stat, i) => (
             <div key={i}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{stat.label}</p>
@@ -138,7 +130,7 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
 
       <div className="flex-1 overflow-y-auto space-y-4 pb-12">
         <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-6">Live Operations feed</h3>
-        {requests.map((req, i) => (
+        {liveRequests.map((req, i) => (
           <motion.div
             key={req.id || i}
             initial={{ opacity: 0, y: 10 }}
@@ -153,12 +145,11 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
                 <AlertCircle className="w-5 h-5" />
               </div>
               <div>
-                {/* FIXED: Now reads the correct fields from the backend JSON response */}
-                <h3 className="font-bold text-lg text-slate-900 tracking-tight mb-1">{req.task_description || "Emergency Request"}</h3>
+                <h3 className="font-bold text-lg text-slate-900 tracking-tight mb-1">{req.task_description || req.taskType || "Emergency Request"}</h3>
                 <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3" /> {req.location_text || "Location pending"}</span>
+                  <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3" /> {req.location_text || (req.location && req.location.address) || "Location pending"}</span>
                   <span className="opacity-30">•</span>
-                  <span className="flex items-center gap-1.5"><History className="w-3 h-3" /> {new Date(req.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="flex items-center gap-1.5"><History className="w-3 h-3" /> {new Date(req.created_at || req.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             </div>
@@ -166,12 +157,15 @@ export default function NGODashboard({ requests, onNewRequest }: NGODashboardPro
             <div className="flex items-center gap-4">
                <div className="text-right">
                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">Status</p>
-                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{req.status || "open"}</span>
+                 <span className={cn(
+                    "text-[10px] font-black uppercase tracking-widest",
+                    req.status === 'open' ? 'text-blue-600' : 'text-green-600'
+                 )}>{req.status || "open"}</span>
                </div>
                <div>
                  <button
                    onClick={() => handleRebroadcast(req.id)}
-                   className={`py-2 px-3 rounded-2xl font-bold text-[10px] flex items-center gap-2 transition-all ${rebroadcastEnabled[req.id] ? 'bg-yellow-50 border border-yellow-200 text-yellow-700' : 'bg-slate-50 border border-slate-100 text-slate-600'}`}
+                   className={`py-2 px-3 rounded-2xl font-bold text-[10px] flex items-center gap-2 transition-all ${rebroadcastEnabled[req.id] ? 'bg-yellow-50 border border-yellow-200 text-yellow-700' : 'bg-slate-50 border border-slate-100 text-slate-600 hover:bg-slate-100'}`}
                  >
                    <Send className="w-4 h-4" />
                    Rebroadcast

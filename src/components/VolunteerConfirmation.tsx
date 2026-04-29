@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle2, Navigation, MapPin, Phone, Info, ChevronRight } from 'lucide-react';
+import { CheckCircle2, Navigation, MapPin, Phone, Info } from 'lucide-react';
 import { MatchResult } from '../types';
+import api from '../services/api';
 
 interface VolunteerConfirmationProps {
   match: MatchResult;
@@ -18,6 +19,7 @@ const statusSteps = [
 export default function VolunteerConfirmation({ match, onDone }: VolunteerConfirmationProps) {
   const [canCancel, setCanCancel] = useState(true);
   const [timeLeft, setTimeLeft] = useState(120);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     if (timeLeft <= 0) {
@@ -34,14 +36,19 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
   const secs = timeLeft % 60;
   const timeString = `${mins}:${secs.toString().padStart(2, '0')}`;
 
-  const handleCancel = () => {
-    // Notify NGO dashboard that this volunteer cancelled
+  const handleCancel = async () => {
+    setIsCancelling(true);
     try {
-      window.dispatchEvent(new CustomEvent('volunteer-cancelled', { detail: { volunteerName: 'Rapid Volunteer', requestId: match.request.id } }));
-    } catch (e) {
-      // ignore if not available
+      const token = localStorage.getItem('token') || ''; 
+      await api.post(`/match/${match.id}/cancel`, {}, {
+        headers: { 'X-Volunteer-Token': token }
+      });
+    } catch (error) {
+      console.error("Failed to cancel mission on server:", error);
+    } finally {
+      setIsCancelling(false);
+      onDone();
     }
-    onDone();
   };
 
   return (
@@ -50,7 +57,6 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
       animate={{ opacity: 1 }}
       className="h-full flex flex-col bg-slate-50"
     >
-      {/* Top Banner */}
       <div className="bg-slate-900 text-white p-10 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10" style={{ 
           backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', 
@@ -80,15 +86,14 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
       </div>
 
       <div className="flex-1 p-10 overflow-y-auto">
-        {/* Combined NGO + Status Card */}
         <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm mb-8 flex flex-col md:flex-row gap-8">
           <div className="flex items-start gap-5 flex-1">
             <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center flex-shrink-0 border border-slate-100">
               <MapPin className="w-6 h-6 text-slate-400" />
             </div>
             <div>
-              <p className="font-bold text-2xl text-slate-900 tracking-tight mb-1">{match.request.ngoName}</p>
-              <p className="text-sm font-medium text-slate-500 leading-relaxed">{match.request.location.address}</p>
+              <p className="font-bold text-2xl text-slate-900 tracking-tight mb-1">{match.request?.ngo_name || match.request?.ngoName || 'NGO'}</p>
+              <p className="text-sm font-medium text-slate-500 leading-relaxed">{match.request?.location_text || match.request?.location?.address || 'Location'}</p>
             </div>
           </div>
 
@@ -118,7 +123,6 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
           </div>
         </div>
 
-        {/* Task Briefing */}
         <div className="bg-blue-50/50 rounded-[2rem] p-8 border border-blue-100">
            <div className="flex items-center gap-3 mb-4">
              <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center border border-blue-100">
@@ -127,18 +131,19 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
              <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-600">On-Site Briefing</h4>
            </div>
            <p className="text-sm font-medium leading-relaxed text-slate-700">
-             {match.request.description} Please ensure your {match.request.assetsRequired.join(', ') || 'essential gear'} is ready for deployment. Site coordinator will verify ID upon arrival.
+             {match.request?.task_description || match.request?.description} Please ensure your gear is ready for deployment. Site coordinator will verify ID upon arrival.
            </p>
         </div>
       </div>
 
-            {canCancel && (
+      {canCancel && (
         <div className="p-10 pt-0 mt-auto">
           <button 
-            onClick={onDone}
-            className="w-full py-5 bg-white border border-slate-200 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] text-red-500 hover:text-red-700 hover:border-red-200 transition-all flex flex-col items-center gap-1"
+            onClick={handleCancel}
+            disabled={isCancelling}
+            className="w-full py-5 bg-white border border-slate-200 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] text-red-500 hover:text-red-700 hover:border-red-200 disabled:opacity-50 transition-all flex flex-col items-center gap-1"
           >
-            <span>Cancel Mission</span>
+            <span>{isCancelling ? 'Cancelling...' : 'Cancel Mission'}</span>
             <span className="text-[8px] text-slate-400">Window closes in {timeString}</span>
           </button>
         </div>

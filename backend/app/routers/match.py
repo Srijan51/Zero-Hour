@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Match, NGOAccount, NGORequest, Volunteer
-from app.schemas import CheckinRequest, EtaFeedbackRequest, MatchConfirm, MatchLiveResponse, MatchResponse
+from app.schemas import CheckinRequest, MatchConfirm, MatchLiveResponse, MatchResponse
 from app.services.matcher import compute_score, haversine
-from app.services.google_maps import get_driving_eta, get_eta_calibration_factor
+from app.services.google_maps import get_driving_eta
 from typing import List
 
 router = APIRouter(prefix="/match", tags=["Match"])
@@ -58,35 +58,17 @@ def _ensure_volunteer_owns_match(volunteer_id: int, match: Match) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage your own mission")
 
 
-def _refresh_request_capacity_state(db: Session, request_id: int) -> None:
-    req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
-    if not req:
-        return
-
-    active_match_count = db.query(Match).filter(
-        Match.request_id == request_id,
-        Match.status != "cancelled",
-    ).count()
-    req.volunteers_matched = active_match_count
-    volunteers_needed = max(1, int(req.volunteers_needed or 1))
-    req.status = "filled" if active_match_count >= volunteers_needed else "open"
-
-
 def _check_no_show(match: Match) -> bool:
-    """A volunteer is flagged as no-show only when GPS pings STOP entirely.
-    If pings are still arriving (even if position isn't changing = stuck in traffic),
-    the volunteer is NOT flagged."""
+    """A volunteer is flagged as no-show only when GPS pings STOP entirely."""
     if match.status in ("pending_confirmation", "completed", "cancelled"):
         return False
     if not match.last_ping_at:
-        # No pings received at all — check time since match creation
         created = match.created_at
         if not created:
             return False
         created_utc = created.replace(tzinfo=timezone.utc) if not created.tzinfo else created.astimezone(timezone.utc)
         minutes_since_create = (datetime.now(timezone.utc) - created_utc).total_seconds() / 60
         return minutes_since_create > NO_SHOW_PING_TIMEOUT_MIN
-    # Last ping exists — check if it's stale
     last = match.last_ping_at
     last_utc = last.replace(tzinfo=timezone.utc) if not last.tzinfo else last.astimezone(timezone.utc)
     minutes_since_ping = (datetime.now(timezone.utc) - last_utc).total_seconds() / 60
@@ -102,7 +84,6 @@ def _compute_live_state(match: Match, request: NGORequest):
     created_ts = created_at.astimezone(timezone.utc) if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
     elapsed_minutes = max(0, (now - created_ts).total_seconds() / 60)
 
-    # Use the stored Google Maps ETA when available; fall back to haversine estimate.
     if match.eta_minutes and match.eta_minutes > 0:
         travel_minutes = float(match.eta_minutes)
         eta_display = match.eta_text or f"{match.eta_minutes} mins"
@@ -112,7 +93,6 @@ def _compute_live_state(match: Match, request: NGORequest):
         travel_minutes = max(5.0, (distance_km / avg_speed_kmh) * 60.0)
         eta_display = f"{int(round(travel_minutes))} mins"
 
-    # If we have live GPS from pings, compute distance-based progress
     if match.volunteer_lat is not None and match.volunteer_lng is not None:
         current_distance = haversine(match.volunteer_lat, match.volunteer_lng, request.lat, request.lng)
         initial_distance = haversine(match.volunteer.lat or 22.5726, match.volunteer.lng or 88.3639, request.lat, request.lng)
@@ -126,7 +106,6 @@ def _compute_live_state(match: Match, request: NGORequest):
     remaining_minutes = max(0, int(round(travel_minutes - elapsed_minutes)))
     eta_arrival_time = (now + timedelta(minutes=remaining_minutes)).isoformat()
 
-    # Override status based on match status (which may be set by checkin/complete)
     status = match.status
     if status == "pending_confirmation":
         return "pending_confirmation", progress_percent, 0, now.isoformat(), eta_display, "Volunteer marked task done — awaiting NGO confirmation"
@@ -161,7 +140,6 @@ def confirm_match(
     if not vol or not req:
         raise HTTPException(status_code=404, detail="Volunteer or Request not found")
 
-    # Save phone/name on the volunteer record
     if confirm.phone:
         vol.phone = confirm.phone
     if confirm.name:
@@ -175,11 +153,6 @@ def confirm_match(
         req.lat,
         req.lng,
     )
-    if eta_result.get("source") == "estimate":
-        calibration_factor = get_eta_calibration_factor(db)
-        adjusted_minutes = max(1, int(round(eta_result["duration_minutes"] * calibration_factor)))
-        eta_result["duration_minutes"] = adjusted_minutes
-        eta_result["duration_text"] = f"{adjusted_minutes} mins"
 
     now = datetime.now(timezone.utc)
     new_match = Match(
@@ -192,9 +165,7 @@ def confirm_match(
         created_at=now,
         updated_at=now,
     )
-    req.volunteers_matched = (req.volunteers_matched or 0) + 1
-    volunteers_needed = max(1, int(req.volunteers_needed or 1))
-    req.status = "filled" if req.volunteers_matched >= volunteers_needed else "open"
+    req.status = "matched"
     
     db.add(new_match)
     db.commit()
@@ -203,45 +174,10 @@ def confirm_match(
     db.refresh(vol)
     new_match.request = req
     
-    print(f"FCM Notification sent to NGO {req.ngo_name}: Volunteer {vol.name or 'Anonymous'} ({vol.phone or 'no phone'}) accepted task {req.task_description}")
-    print(f"ETA: {eta_result['duration_text']} (source: {eta_result['source']})")
-    
     response = MatchResponse.model_validate(new_match)
     response.volunteer_phone = vol.phone
     response.volunteer_name = vol.name
     return response
-
-
-@router.post("/{match_id}/eta-feedback")
-def eta_feedback(
-    match_id: int,
-    payload: EtaFeedbackRequest,
-    db: Session = Depends(get_db),
-    ngo: NGOAccount = Depends(_get_authenticated_ngo),
-):
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-
-    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
-    if not req:
-        raise HTTPException(status_code=404, detail="Request not found")
-    _ensure_ngo_owns_request(ngo, req)
-
-    if payload.actual_minutes is not None:
-        match.actual_arrival_minutes = max(0, int(payload.actual_minutes))
-    else:
-        match.actual_arrival_minutes = None
-    match.eta_feedback_given = True
-    db.commit()
-    db.refresh(match)
-
-    return {
-        "ok": True,
-        "match_id": match.id,
-        "eta_feedback_given": match.eta_feedback_given,
-        "actual_arrival_minutes": match.actual_arrival_minutes,
-    }
 
 
 @router.post("/{match_id}/checkin")
@@ -251,7 +187,6 @@ def checkin(
     db: Session = Depends(get_db),
     volunteer_id: int = Depends(_get_authenticated_volunteer_id),
 ):
-    """Receive a GPS ping from the volunteer. Updates position and detects arrival."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -264,23 +199,19 @@ def checkin(
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    # Update GPS position and ping timestamp
     match.volunteer_lat = payload.lat
     match.volunteer_lng = payload.lng
     match.last_ping_at = datetime.now(timezone.utc)
 
-    # Clear no-show flag since we just received a ping
     if match.no_show_flagged:
         match.no_show_flagged = False
 
-    # Check arrival (within ~200m of target)
     distance_to_target = haversine(payload.lat, payload.lng, req.lat, req.lng)
     arrived = distance_to_target <= ARRIVAL_THRESHOLD_KM
 
     if arrived and not match.arrived_at:
         match.arrived_at = datetime.now(timezone.utc)
         match.status = "on_site"
-        print(f"🎯 Volunteer arrived at mission location (distance: {distance_to_target*1000:.0f}m)")
 
     db.commit()
 
@@ -298,7 +229,6 @@ def notify_delay(
     db: Session = Depends(get_db),
     volunteer_id: int = Depends(_get_authenticated_volunteer_id),
 ):
-    """Volunteer taps 'I'm delayed' — stores timestamp for NGO visibility."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -306,8 +236,6 @@ def notify_delay(
 
     match.delay_notified_at = datetime.now(timezone.utc)
     db.commit()
-
-    print(f"⏳ Volunteer notified delay for match {match_id}")
     return {"ok": True, "delay_notified_at": match.delay_notified_at.isoformat()}
 
 
@@ -317,7 +245,6 @@ def volunteer_cancel(
     db: Session = Depends(get_db),
     volunteer_id: int = Depends(_get_authenticated_volunteer_id),
 ):
-    """Allow a volunteer to cancel a just-accepted mission within two minutes."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -334,12 +261,10 @@ def volunteer_cancel(
 
     req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
     match.status = "cancelled"
-    if req:
-        _refresh_request_capacity_state(db, req.id)
+    if req and req.status in ("matched", "pending_confirmation"):
+        req.status = "open"
 
     db.commit()
-
-    print(f"Volunteer cancelled match {match_id}; request re-opened")
     return {"ok": True, "status": "cancelled"}
 
 
@@ -349,7 +274,6 @@ def volunteer_complete(
     db: Session = Depends(get_db),
     volunteer_id: int = Depends(_get_authenticated_volunteer_id),
 ):
-    """Volunteer marks task as done. Status → pending_confirmation. NGO must confirm."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -358,7 +282,6 @@ def volunteer_complete(
     if match.status in ("completed", "cancelled"):
         raise HTTPException(status_code=400, detail="Match already finalized")
 
-    # Gate: volunteer must have arrived (within 200m) to mark complete
     if not match.arrived_at:
         raise HTTPException(status_code=400, detail="You must be at the mission location to mark task as done")
 
@@ -367,8 +290,6 @@ def volunteer_complete(
     if req:
         req.status = "pending_confirmation"
     db.commit()
-
-    print(f"✅ Volunteer marked match {match_id} as complete — awaiting NGO confirmation")
     return {"ok": True, "status": "pending_confirmation"}
 
 
@@ -378,7 +299,6 @@ def ngo_confirm_completion(
     db: Session = Depends(get_db),
     ngo: NGOAccount = Depends(_get_authenticated_ngo),
 ):
-    """NGO confirms the volunteer actually helped. Finalizes the mission."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -394,8 +314,6 @@ def ngo_confirm_completion(
     match.status = "completed"
     req.status = "completed"
     db.commit()
-
-    print(f"🎉 NGO confirmed completion for match {match_id}")
     return {"ok": True, "status": "completed"}
 
 
@@ -405,7 +323,6 @@ def ngo_dispute(
     db: Session = Depends(get_db),
     ngo: NGOAccount = Depends(_get_authenticated_ngo),
 ):
-    """NGO disputes completion — volunteer didn't actually help. Re-opens the request."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -416,10 +333,8 @@ def ngo_dispute(
     _ensure_ngo_owns_request(ngo, req)
 
     match.status = "cancelled"
-    _refresh_request_capacity_state(db, req.id)
+    req.status = "open"
     db.commit()
-
-    print(f"❌ NGO disputed match {match_id} — request re-opened")
     return {"ok": True, "status": "open"}
 
 
@@ -429,7 +344,6 @@ def rebroadcast(
     db: Session = Depends(get_db),
     ngo: NGOAccount = Depends(_get_authenticated_ngo),
 ):
-    """NGO cancels a no-show match and re-opens the request for other volunteers."""
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -440,10 +354,8 @@ def rebroadcast(
     _ensure_ngo_owns_request(ngo, req)
 
     match.status = "cancelled"
-    _refresh_request_capacity_state(db, req.id)
+    req.status = "open"
     db.commit()
-
-    print(f"📡 Re-broadcast: match {match_id} cancelled, request re-opened")
     return {"ok": True, "status": "open"}
 
 
@@ -481,19 +393,24 @@ def get_match_live_status(
     if not ngo_authenticated and not volunteer_authenticated:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access to live mission")
 
-    # Check no-show (pings stopped)
     is_no_show = _check_no_show(match)
+    needs_commit = False
+
     if is_no_show and not match.no_show_flagged:
         match.no_show_flagged = True
+        needs_commit = True
     elif not is_no_show and match.no_show_flagged:
         match.no_show_flagged = False
+        needs_commit = True
 
     status, progress_percent, eta_minutes, eta_arrival_time, eta_text, status_message = _compute_live_state(match, req)
     if match.status not in ("pending_confirmation", "completed", "cancelled") and match.status != status:
         match.status = status
+        needs_commit = True
 
-    db.commit()
-    db.refresh(match)
+    if needs_commit:
+        db.commit()
+        db.refresh(match)
 
     vol = match.volunteer
 
@@ -523,7 +440,6 @@ def get_matches_for_request(
     db: Session = Depends(get_db),
     ngo: NGOAccount = Depends(_get_authenticated_ngo),
 ):
-    """Get all matches for a specific request (used by NGO dashboard)."""
     req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -531,6 +447,7 @@ def get_matches_for_request(
 
     matches = db.query(Match).filter(
         Match.request_id == request_id,
+        Match.status != "cancelled",
     ).order_by(Match.id.desc()).all()
     results = []
     for m in matches:

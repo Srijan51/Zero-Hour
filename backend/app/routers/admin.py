@@ -27,8 +27,6 @@ from app.services.matcher import _expand_to_canonical_tokens, _is_semantic_match
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
-
-
 def ensure_default_admin(db: Session) -> None:
     default_username = os.getenv("ADMIN_USERNAME", "admin")
     default_password = os.getenv("ADMIN_PASSWORD", "admin123")
@@ -417,7 +415,6 @@ def admin_analytics(
         key = str(max(1, min(5, int(req.urgency or 3))))
         urgency_distribution[key] = urgency_distribution.get(key, 0) + 1
 
-    # Skill gaps: for completed requests, count required skills that none of the volunteers satisfy.
     volunteers = db.query(Volunteer).all()
     volunteer_skill_tokens = []
     for volunteer in volunteers:
