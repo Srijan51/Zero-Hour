@@ -8,3 +8,4 @@ python-multipart
 requests
 psycopg2-binary
 apscheduler
+bcrypt
