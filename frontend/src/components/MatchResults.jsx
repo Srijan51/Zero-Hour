@@ -727,14 +727,14 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
 
         return (
           <>
-            <div className="mb-3 px-2">
-              <div className="flex items-center justify-between mb-2">
+            <div className="mb-6 px-2 rounded-2xl border border-white/60 bg-white/55 backdrop-blur-sm p-3">
+              <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-slate-600">Top Picks</h3>
                 <span className="text-[11px] text-slate-400">Top matches stay pinned for quick access</span>
               </div>
-              <div className="flex gap-3 overflow-x-auto pb-2">
+              <div className="flex gap-4 overflow-x-auto pb-3">
                 {topMatches.map((match) => (
-                  <div key={`top-${match.id || match.request_id || match.ngo_name}`} className="min-w-[220px] p-3 bg-white/90 rounded-xl border border-white/60 shadow-sm flex-shrink-0">
+                  <div key={`top-${match.id || match.request_id || match.ngo_name}`} className="min-w-[220px] p-3.5 bg-white/90 rounded-xl border border-white/70 shadow-sm flex-shrink-0">
                     <div className="flex items-start justify-between mb-1">
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm leading-tight truncate">{match.ngo_name}</h4>
@@ -756,10 +756,18 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
               </div>
             </div>
 
-            <div className="overflow-y-auto pb-4 space-y-4 px-2 custom-scrollbar">
+            <div className="px-2 mb-3">
+              <div className="flex items-center gap-3">
+                <span className="h-px flex-1 bg-slate-200/80" />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">More Matches</p>
+                <span className="h-px flex-1 bg-slate-200/80" />
+              </div>
+            </div>
+
+            <div className="overflow-y-auto pb-4 space-y-5 px-2 custom-scrollbar">
               {remaining.length > 0 ? (
                 remaining.map((match, idx) => (
-                  <div key={idx} className="p-5 bg-white/80 backdrop-blur-md border border-white/60 shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-2xl flex flex-col transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1">
+                  <div key={idx} className="p-5 bg-white/78 backdrop-blur-md border border-white/65 shadow-[0_4px_18px_rgba(0,0,0,0.04)] rounded-2xl flex flex-col transition-all duration-300 hover:shadow-[0_8px_28px_rgba(0,0,0,0.08)] hover:-translate-y-1">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-bold text-slate-900 text-lg leading-tight">{match.ngo_name}</h3>
                       <span className="px-2.5 py-1 bg-primary-light/50 text-primary-hover text-[11px] font-bold rounded-full flex items-center shadow-sm">
@@ -786,7 +794,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
                 ))
               ) : (
                 matches.map((match, idx) => (
-                  <div key={idx} className="p-5 bg-white/80 backdrop-blur-md border border-white/60 shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-2xl flex flex-col transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1">
+                  <div key={idx} className="p-5 bg-white/78 backdrop-blur-md border border-white/65 shadow-[0_4px_18px_rgba(0,0,0,0.04)] rounded-2xl flex flex-col transition-all duration-300 hover:shadow-[0_8px_28px_rgba(0,0,0,0.08)] hover:-translate-y-1">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-bold text-slate-900 text-lg leading-tight">{match.ngo_name}</h3>
                       <span className="px-2.5 py-1 bg-primary-light/50 text-primary-hover text-[11px] font-bold rounded-full flex items-center shadow-sm">

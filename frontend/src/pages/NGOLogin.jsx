@@ -168,6 +168,7 @@ export default function NGOLogin() {
     setRequests([]);
     setMatchDataMap({});
     seenDelayByRequestRef.current = {};
+    seenCancelledByRequestRef.current = {};
   };
 
   const submitEtaFeedbackAndConfirm = async (matchInfo, live) => {
@@ -240,8 +241,10 @@ export default function NGOLogin() {
       return {};
     }
   });
+  const matchDataMapRef = useRef(matchDataMap);
 
   useEffect(() => {
+    matchDataMapRef.current = matchDataMap;
     try {
       localStorage.setItem(NGO_MATCH_CACHE_KEY, JSON.stringify(matchDataMap));
     } catch {
@@ -283,7 +286,8 @@ export default function NGOLogin() {
       for (const req of activeRequests) {
         try {
           const res = await api.get(`/match/request/${req.id}`, { headers: authHeaders });
-          const activeMatch = pickPreferredMatch((res.data || []).filter(m => m.status !== 'cancelled'));
+          const allMatches = res.data || [];
+          const activeMatch = pickPreferredMatch(allMatches.filter(m => m.status !== 'cancelled'));
           if (activeMatch) {
             // Fetch live status for this match
             try {
@@ -316,13 +320,28 @@ export default function NGOLogin() {
             } catch {
               updatedEntries[req.id] = activeMatch;
             }
+          } else {
+            const latestCancelledMatch = allMatches.find(m => m.status === 'cancelled');
+            const cachedMatch = matchDataMapRef.current[req.id];
+            if (latestCancelledMatch && cachedMatch?.id === latestCancelledMatch.id) {
+              const cancelKey = `${latestCancelledMatch.id}-cancelled`;
+              const lastCancel = seenCancelledByRequestRef.current[req.id];
+              if (lastCancel !== cancelKey) {
+                addToast(
+                  `Volunteer cancelled. Match ended for ${req.task_description.slice(0, 36)}${req.task_description.length > 36 ? '...' : ''}. Request is open again.`,
+                  'warning'
+                );
+                seenCancelledByRequestRef.current[req.id] = cancelKey;
+              }
+            }
+            updatedEntries[req.id] = null;
           }
         } catch { /* ignore */ }
       }
       setMatchDataMap((prev) => {
         const next = { ...prev, ...updatedEntries };
         Object.keys(next).forEach((key) => {
-          if (!activeRequestIds.has(Number(key))) {
+          if (!activeRequestIds.has(Number(key)) || next[key] === null) {
             delete next[key];
           }
         });

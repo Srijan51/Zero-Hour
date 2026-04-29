@@ -531,7 +531,6 @@ def get_matches_for_request(
 
     matches = db.query(Match).filter(
         Match.request_id == request_id,
-        Match.status != "cancelled",
     ).order_by(Match.id.desc()).all()
     results = []
     for m in matches:
