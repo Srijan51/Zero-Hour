@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const baseURL = 'https://zero-hour-832409031925.europe-west1.run.app';
+const baseURL = 'https://zero-hour1-832409031925.asia-south1.run.app';
 
 const api = axios.create({
   baseURL,
