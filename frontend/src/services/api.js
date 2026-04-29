@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Fallback to local 8000 for dev if env is missing
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const baseURL = 'https://zero-hour-832409031925.europe-west1.run.app';
 
 const api = axios.create({
   baseURL,
