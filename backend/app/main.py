@@ -19,8 +19,7 @@ Base.metadata.create_all(bind=engine)
 
 
 def _ensure_ngo_certificate_columns() -> None:
-    if engine.dialect.name != "sqlite":
-        return
+    
 
     inspector = inspect(engine)
     
