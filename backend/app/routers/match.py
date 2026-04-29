@@ -165,7 +165,8 @@ def confirm_match(
         created_at=now,
         updated_at=now,
     )
-    req.status = "matched"
+    req.volunteers_matched = min(req.volunteers_needed or 1, (req.volunteers_matched or 0) + 1)
+    req.status = "filled" if req.volunteers_matched >= (req.volunteers_needed or 1) else "matched"
     
     db.add(new_match)
     db.commit()
@@ -262,6 +263,7 @@ def volunteer_cancel(
     req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
     match.status = "cancelled"
     if req and req.status in ("matched", "pending_confirmation"):
+        req.volunteers_matched = max(0, (req.volunteers_matched or 0) - 1)
         req.status = "open"
 
     db.commit()
@@ -334,6 +336,7 @@ def ngo_dispute(
 
     match.status = "cancelled"
     req.status = "open"
+    req.volunteers_matched = max(0, (req.volunteers_matched or 0) - 1)
     db.commit()
     return {"ok": True, "status": "open"}
 
@@ -355,6 +358,7 @@ def rebroadcast(
 
     match.status = "cancelled"
     req.status = "open"
+    req.volunteers_matched = max(0, (req.volunteers_matched or 0) - 1)
     db.commit()
     return {"ok": True, "status": "open"}
 
@@ -447,7 +451,6 @@ def get_matches_for_request(
 
     matches = db.query(Match).filter(
         Match.request_id == request_id,
-        Match.status != "cancelled",
     ).order_by(Match.id.desc()).all()
     results = []
     for m in matches:
