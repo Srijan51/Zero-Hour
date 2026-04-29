@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.jpeg', 'icon.svg', 'icon-maskable.svg'],
+      includeAssets: ['logo.jpeg'],
       devOptions: {
         enabled: true
       },
@@ -84,12 +84,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/jpeg',
             purpose: 'any',
-          },
-          {
-            src: '/icon-maskable.svg',
-            sizes: '48x48 72x72 96x96 128x128 192x192 256x256 512x512',
-            type: 'image/svg+xml',
-            purpose: 'maskable',
           },
         ],
         screenshots: [],
