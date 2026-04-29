@@ -322,8 +322,8 @@ export default function NGOLogin() {
             }
           } else {
             const latestCancelledMatch = allMatches.find(m => m.status === 'cancelled');
-            const cachedMatch = matchDataMapRef.current[req.id];
-            if (latestCancelledMatch && cachedMatch?.id === latestCancelledMatch.id) {
+            if (latestCancelledMatch) {
+              const cachedMatch = matchDataMapRef.current[req.id];
               const cancelKey = `${latestCancelledMatch.id}-cancelled`;
               const lastCancel = seenCancelledByRequestRef.current[req.id];
               if (lastCancel !== cancelKey) {
@@ -333,8 +333,19 @@ export default function NGOLogin() {
                 );
                 seenCancelledByRequestRef.current[req.id] = cancelKey;
               }
+              updatedEntries[req.id] = {
+                ...(cachedMatch?.id === latestCancelledMatch.id ? cachedMatch : latestCancelledMatch),
+                live: {
+                  ...(cachedMatch?.live || {}),
+                  status: 'cancelled',
+                  progress_percent: 0,
+                  arrived: false,
+                  status_message: 'Volunteer cancelled. Request is being rebroadcast.',
+                },
+              };
+            } else {
+              updatedEntries[req.id] = null;
             }
-            updatedEntries[req.id] = null;
           }
         } catch { /* ignore */ }
       }
@@ -695,13 +706,14 @@ export default function NGOLogin() {
             const isMatched = Boolean(matchInfo?.id);
             const isPending = live?.status === 'pending_confirmation' || req.status === 'pending_confirmation';
             const isCompleted = req.status === 'completed';
+            const isCancelled = live?.status === 'cancelled';
 
             return (
             <div key={req.id} className={`relative overflow-hidden p-4 bg-white/95 rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.06)] border hover:shadow-[0_16px_42px_rgba(15,23,42,0.1)] transition-all duration-200 group ${
-              live?.no_show_flagged ? 'border-rose-200 bg-rose-50/40' : isPending ? 'border-amber-200 bg-amber-50/40' : 'border-white/70'
+              live?.no_show_flagged ? 'border-rose-200 bg-rose-50/40' : isCancelled ? 'border-slate-200 bg-slate-50/60' : isPending ? 'border-amber-200 bg-amber-50/40' : 'border-white/70'
             }`} style={{ animationDelay: `${idx * 0.05}s` }}>
               <div className={`absolute inset-y-0 left-0 w-1 ${
-                live?.no_show_flagged ? 'bg-rose-400' : isPending ? 'bg-amber-400' : isMatched ? 'bg-emerald-400' : 'bg-blue-400'
+                live?.no_show_flagged ? 'bg-rose-400' : isCancelled ? 'bg-slate-400' : isPending ? 'bg-amber-400' : isMatched ? 'bg-emerald-400' : 'bg-blue-400'
               }`} />
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0 pl-2">
@@ -795,9 +807,9 @@ export default function NGOLogin() {
                       </div>
                     </div>
                     <div className={`px-2.5 py-1 rounded-full text-[9px] font-bold tracking-wide border ${
-                      live?.arrived ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                      isCancelled ? 'bg-slate-100 text-slate-500' : live?.arrived ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
                     }`}>
-                      {live?.arrived ? '📍 ON SITE' : '🚗 EN ROUTE'}
+                      {isCancelled ? 'REBROADCASTING' : live?.arrived ? '📍 ON SITE' : '🚗 EN ROUTE'}
                     </div>
                   </div>
 
