@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Trash2, UserPlus, CheckCircle2, XCircle, Pencil, Save, X, ArrowLeft, Info, History } from 'lucide-react';
+import { Trash2, UserPlus, CheckCircle2, XCircle, Pencil, Save, X, ArrowLeft, Info, History, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -22,6 +22,7 @@ export default function AdminPanel() {
   const [registrations, setRegistrations] = useState([]);
   const [ngos, setNgos] = useState([]);
   const [pendingDeleteNgo, setPendingDeleteNgo] = useState(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [newNgo, setNewNgo] = useState({
     ngo_name: '',
@@ -102,6 +103,7 @@ export default function AdminPanel() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setIsLoggingIn(true);
 
     try {
       const res = await api.post('/admin/login', credentials);
@@ -113,6 +115,8 @@ export default function AdminPanel() {
       showToast('Admin login successful.', 'success');
     } catch (err) {
       showToast('Invalid admin credentials', 'error');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -265,8 +269,13 @@ export default function AdminPanel() {
                 onChange={e => setCredentials({ ...credentials, password: e.target.value })}
               />
             </div>
-            <button type="submit" className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary text-white font-bold rounded-xl shadow-md transition-all active:scale-95">
-              Login as Admin
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-75 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-md transition-all active:scale-95 inline-flex items-center justify-center space-x-2"
+            >
+              {isLoggingIn ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              <span>{isLoggingIn ? 'Logging in...' : 'Login as Admin'}</span>
             </button>
           </form>
         </div>
