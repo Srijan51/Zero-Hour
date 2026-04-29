@@ -100,6 +100,7 @@ def create_ngo_request(req: NGORequestCreate, db: Session = Depends(get_db), ngo
         request_data["google_maps_url"] = f"https://www.google.com/maps/search/?api=1&query={quote_plus(request_data['location_text'])}"
     # Server-side binding ensures only authenticated NGOs can post under their own name.
     request_data["ngo_name"] = ngo.ngo_name
+    request_data["volunteers_needed"] = max(1, int(request_data.get("volunteers_needed") or 1))
     db_req = NGORequest(**request_data)
     db.add(db_req)
     db.commit()
@@ -110,7 +111,7 @@ def create_ngo_request(req: NGORequestCreate, db: Session = Depends(get_db), ngo
 def get_all_requests(db: Session = Depends(get_db), ngo: NGOAccount = Depends(_get_authenticated_ngo)):
     return db.query(NGORequest).filter(
         NGORequest.ngo_name == ngo.ngo_name,
-        NGORequest.status.in_(["open", "matched", "pending_confirmation"])
+        NGORequest.status.in_(["open", "matched", "pending_confirmation", "filled"])
     ).all()
 
 

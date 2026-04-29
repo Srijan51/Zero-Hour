@@ -15,7 +15,8 @@ import { MapPin, Loader2, X } from 'lucide-react';
 
 const PHOTON_URL = 'https://photon.komoot.io/api/';
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
-const AUTOCOMPLETE_DEBOUNCE_MS = 150;
+const AUTOCOMPLETE_DEBOUNCE_MS = 250;
+const MIN_QUERY_LENGTH = 3;
 
 function getDistanceKm(lat1, lon1, lat2, lon2) {
   if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return null;
@@ -107,7 +108,7 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
 
   const fetchSuggestions = async (input) => {
     const query = input.trim();
-    if (!query || query.length < 2) {
+    if (!query || query.length < MIN_QUERY_LENGTH) {
       setSuggestions([]);
       setShowDropdown(false);
       setHasSearched(false);
@@ -143,16 +144,14 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
       if (!resp.ok) throw new Error('Photon request failed');
       const data = await resp.json();
 
-      let features = sortSuggestionsByDistance(data.features || []);
-      if (features.length === 0) {
-        features = sortSuggestionsByDistance(await fetchNominatimSuggestions(query, abortControllerRef.current.signal));
-      }
+      const features = sortSuggestionsByDistance(data.features || []);
 
       if (requestId !== requestIdRef.current) return;
       setSuggestions(features);
       setShowDropdown(true);
       setHasSearched(true);
       setActiveIndex(-1);
+      setGeocoderError(features.length > 0 ? '' : 'No matching locations found');
     } catch (err) {
       if (err.name !== 'AbortError') {
         try {
@@ -222,7 +221,7 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
     onChange(val, null, null);
     setGeocoderError('');
     setHasSearched(false);
-    setShowDropdown(val.trim().length >= 2);
+    setShowDropdown(val.trim().length >= MIN_QUERY_LENGTH);
 
     // Debounce
     clearTimeout(debounceTimer.current);
@@ -330,7 +329,7 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
           type="text"
           value={inputValue}
           onChange={handleInputChange}
-          onFocus={() => { if (inputValue.trim().length >= 2) setShowDropdown(true); }}
+          onFocus={() => { if (inputValue.trim().length >= MIN_QUERY_LENGTH) setShowDropdown(true); }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || "Search for a location..."}
           className="w-full mt-1 pl-9 pr-9 py-3 bg-white rounded-xl text-sm border border-slate-200 shadow-sm focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
@@ -405,11 +404,6 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
               </button>
             );
           })}
-          <div className="px-4 py-2 bg-slate-50/80 flex items-center justify-end">
-            <span className="text-[9px] text-slate-300 font-medium tracking-wide">
-              © OpenStreetMap contributors
-            </span>
-          </div>
         </div>
       )}
     </div>

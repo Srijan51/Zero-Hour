@@ -1,4 +1,5 @@
 import os
+import importlib
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +8,11 @@ from sqlalchemy import inspect, text
 from app.database import Base, SessionLocal, engine
 from app.routers import admin, match, ngo, volunteer
 from app.routers.admin import ensure_default_admin
+
+try:
+    from app.services.escalation import run_escalation
+except ImportError:
+    run_escalation = None
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -37,6 +43,18 @@ def _ensure_ngo_certificate_columns() -> None:
             connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN location_text VARCHAR"))
         if "google_maps_url" not in ngo_request_columns:
             connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN google_maps_url VARCHAR"))
+        if "volunteers_needed" not in ngo_request_columns:
+            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN volunteers_needed INTEGER DEFAULT 1"))
+        if "volunteers_matched" not in ngo_request_columns:
+            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN volunteers_matched INTEGER DEFAULT 0"))
+        if "last_escalated_at" not in ngo_request_columns:
+            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN last_escalated_at DATETIME"))
+        if "created_at" not in ngo_request_columns:
+            connection.execute(text("ALTER TABLE ngo_requests ADD COLUMN created_at DATETIME"))
+
+        connection.execute(text("UPDATE ngo_requests SET volunteers_needed = 1 WHERE volunteers_needed IS NULL"))
+        connection.execute(text("UPDATE ngo_requests SET volunteers_matched = 0 WHERE volunteers_matched IS NULL"))
+        connection.execute(text("UPDATE ngo_requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
 
         if "created_at" not in match_columns:
             connection.execute(text("ALTER TABLE matches ADD COLUMN created_at DATETIME"))
@@ -71,6 +89,10 @@ def _ensure_ngo_certificate_columns() -> None:
             connection.execute(text("ALTER TABLE matches ADD COLUMN arrived_at DATETIME"))
         if "delay_notified_at" not in match_columns:
             connection.execute(text("ALTER TABLE matches ADD COLUMN delay_notified_at DATETIME"))
+        if "actual_arrival_minutes" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN actual_arrival_minutes INTEGER"))
+        if "eta_feedback_given" not in match_columns:
+            connection.execute(text("ALTER TABLE matches ADD COLUMN eta_feedback_given BOOLEAN DEFAULT 0"))
 
         # Migrate legacy 90G values into the new 80G columns when present.
         if "certificate_90g_number" in ngo_account_columns:
@@ -137,6 +159,21 @@ app.include_router(match.router)
 app.include_router(admin.router)
 
 
+AsyncIOScheduler = importlib.import_module("apscheduler.schedulers.asyncio").AsyncIOScheduler
+scheduler = AsyncIOScheduler()
+
+
+def run_escalation_task() -> None:
+    if run_escalation is None:
+        return
+
+    db = SessionLocal()
+    try:
+        run_escalation(db)
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def setup_default_admin():
     db = SessionLocal()
@@ -144,6 +181,29 @@ def setup_default_admin():
         ensure_default_admin(db)
     finally:
         db.close()
+
+
+@app.on_event("startup")
+def setup_demo_seed_data():
+    from app.seed import seed_data
+
+    seed_data()
+
+
+@app.on_event("startup")
+def setup_escalation_scheduler():
+    if run_escalation is None:
+        return
+
+    if not scheduler.running:
+        scheduler.add_job(run_escalation_task, "interval", minutes=5, id="run_escalation_task", replace_existing=True)
+        scheduler.start()
+
+
+@app.on_event("shutdown")
+def shutdown_escalation_scheduler():
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
 
 @app.get("/")
 def read_root():

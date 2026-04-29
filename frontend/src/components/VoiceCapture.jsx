@@ -16,6 +16,14 @@ export default function VoiceCapture({ onTranscriptComplete }) {
   const [textInput, setTextInput] = useState('');
   const recognitionRef = useRef(null);
   const textareaRef = useRef(null);
+  const [lang, setLang] = useState(() => localStorage.getItem('voice_lang') || 'en-IN');
+
+  useEffect(() => {
+    try { localStorage.setItem('voice_lang', lang); } catch {}
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = lang;
+    }
+  }, [lang]);
 
   useEffect(() => {
     // Initialize Web Speech API
@@ -53,6 +61,10 @@ export default function VoiceCapture({ onTranscriptComplete }) {
     }
     setTranscript('');
     setIsRecording(true);
+    // Ensure recognition uses the selected language
+    try {
+      recognitionRef.current.lang = lang;
+    } catch (e) {}
     recognitionRef.current.start();
   };
 
@@ -178,6 +190,15 @@ export default function VoiceCapture({ onTranscriptComplete }) {
         <p className="text-slate-400 text-xs max-w-[260px] mx-auto font-medium leading-relaxed">
           State your skills, assets & availability. AI will match you to the nearest crisis.
         </p>
+        <div className="mt-2 flex items-center justify-center space-x-2">
+          <button
+            onClick={() => setLang(prev => prev === 'en-IN' ? 'bn-IN' : 'en-IN')}
+            className="text-[12px] font-semibold px-3 py-1 rounded-full border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors"
+            aria-label="Toggle language"
+          >
+            {lang === 'en-IN' ? '🇮🇳 English' : 'বাংলা'}
+          </button>
+        </div>
       </div>
 
       <div className="relative flex items-center justify-center h-28 w-28 mb-4">

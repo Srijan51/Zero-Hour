@@ -138,7 +138,7 @@ export default function VolunteerConfirmation({ match, onDone }: VolunteerConfir
             onClick={onDone}
             className="w-full py-5 bg-white border border-slate-200 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] text-red-500 hover:text-red-700 hover:border-red-200 transition-all flex flex-col items-center gap-1"
           >
-            <span>Cancel Mission</span>l̥
+            <span>Cancel Mission</span>
             <span className="text-[8px] text-slate-400">Window closes in {timeString}</span>
           </button>
         </div>

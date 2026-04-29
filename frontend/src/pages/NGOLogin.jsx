@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Navigation, Phone, User, RotateCcw, XCircle, Trash2 } from 'lucide-react';
+import { Plus, Clock, AlertTriangle, CheckCircle2, Radio, LogOut, Navigation, Phone, User, RotateCcw, XCircle, Trash2, Loader2 } from 'lucide-react';
 import api from '../services/api';
 import PlacesAutocomplete from '../components/PlacesAutocomplete';
 import { ToastContainer, useToasts } from '../components/Toast';
@@ -14,6 +14,13 @@ const URGENCY_LABELS = {
 };
 
 const NGO_MATCH_CACHE_KEY = 'ngo_match_data_cache';
+const NGO_LIVE_POLL_MS = 1500;
+const ETA_FEEDBACK_OPTIONS = {
+  on_time: { label: 'On time ✓', multiplier: 1.0, on_time: true },
+  late_10: { label: 'Late (10-20 min)', multiplier: 1.25, on_time: false },
+  late_20: { label: 'Late (20+ min)', multiplier: 1.5, on_time: false },
+  early: { label: 'Early', multiplier: 0.8, on_time: false },
+};
 
 export default function NGOLogin() {
   const [credentials, setCredentials] = useState({ identifier: '', password: '' });
@@ -30,13 +37,20 @@ export default function NGOLogin() {
     location_text: '',
     lat: 0,
     lng: 0,
-    urgency: 3
+    urgency: 3,
+    volunteers_needed: 1,
   });
   
   const [status, setStatus] = useState('');
   const [requests, setRequests] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [pendingDeleteRequestId, setPendingDeleteRequestId] = useState(null);
+  const [etaFeedbackMatchId, setEtaFeedbackMatchId] = useState(null);
+  const [etaFeedbackChoice, setEtaFeedbackChoice] = useState('on_time');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isFetchingRequests, setIsFetchingRequests] = useState(false);
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const seenDelayByRequestRef = useRef({});
   const seenCancelledByRequestRef = useRef({});
 
@@ -65,12 +79,15 @@ export default function NGOLogin() {
 
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
-  const fetchRequests = async () => {
+  const fetchRequests = async ({ silent = false } = {}) => {
+    if (!silent) setIsFetchingRequests(true);
     try {
       const res = await api.get('/ngo/requests', { headers: authHeaders });
       setRequests(res.data);
     } catch (e) {
       console.error(e);
+    } finally {
+      if (!silent) setIsFetchingRequests(false);
     }
   };
 
@@ -104,13 +121,14 @@ export default function NGOLogin() {
     }
 
     fetchRequests();
-    const interval = setInterval(fetchRequests, 5000);
+    const interval = setInterval(() => fetchRequests({ silent: true }), NGO_LIVE_POLL_MS);
     return () => clearInterval(interval);
   }, [token]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthStatus('Authenticating...');
+    setIsLoggingIn(true);
 
     try {
       const res = await api.post('/ngo/login', credentials);
@@ -125,6 +143,8 @@ export default function NGOLogin() {
       setAuthStatus('');
     } catch (error) {
       setAuthStatus('Invalid NGO credentials. Access denied.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -141,9 +161,35 @@ export default function NGOLogin() {
     seenDelayByRequestRef.current = {};
   };
 
+  const submitEtaFeedbackAndConfirm = async (matchInfo, live) => {
+    if (!matchInfo?.id) return;
+    const choice = ETA_FEEDBACK_OPTIONS[etaFeedbackChoice] || ETA_FEEDBACK_OPTIONS.on_time;
+    const etaMinutes = Number(live?.eta_minutes || matchInfo?.eta_minutes || 0);
+    const actualMinutes = etaMinutes > 0 ? Math.max(1, Math.round(etaMinutes * choice.multiplier)) : null;
+
+    try {
+      setPendingAction(`confirm-${matchInfo.id}`);
+      await api.post(
+        `/match/${matchInfo.id}/eta-feedback`,
+        { on_time: choice.on_time, actual_minutes: actualMinutes },
+        { headers: authHeaders }
+      );
+      await api.post(`/match/${matchInfo.id}/ngo-confirm`, {}, { headers: authHeaders });
+      addToast('ETA feedback saved and mission confirmed.', 'success');
+      setEtaFeedbackMatchId(null);
+      setEtaFeedbackChoice('on_time');
+      fetchRequests();
+    } catch (err) {
+      addToast(err?.response?.data?.detail || 'Failed to confirm completion.', 'error');
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatus('Submitting...');
+    setIsSubmittingRequest(true);
     try {
       const payload = {
         ...formData,
@@ -167,6 +213,8 @@ export default function NGOLogin() {
         setStatus('');
         addToast(message || 'Failed to post task.', 'error');
       }
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -275,38 +323,39 @@ export default function NGOLogin() {
 
     if (requests.length > 0) {
       fetchMatchData();
-      const interval = setInterval(fetchMatchData, 5000);
+      const interval = setInterval(fetchMatchData, NGO_LIVE_POLL_MS);
       return () => clearInterval(interval);
     }
   }, [token, requests, addToast]);
 
   const handleNgoConfirm = async (matchId) => {
-    try {
-      await api.post(`/match/${matchId}/ngo-confirm`, {}, { headers: authHeaders });
-      addToast('Mission confirmed as complete!', 'success');
-      fetchRequests();
-    } catch (err) {
-      addToast('Failed to confirm completion.', 'error');
-    }
+    setEtaFeedbackMatchId(matchId);
+    setEtaFeedbackChoice('on_time');
   };
 
   const handleNgoDispute = async (matchId) => {
     try {
+      setPendingAction(`dispute-${matchId}`);
       await api.post(`/match/${matchId}/ngo-dispute`, {}, { headers: authHeaders });
       addToast('Match disputed — request re-opened.', 'warning');
       fetchRequests();
     } catch (err) {
       addToast('Failed to dispute.', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleRebroadcast = async (matchId) => {
     try {
+      setPendingAction(`rebroadcast-${matchId}`);
       await api.post(`/match/${matchId}/rebroadcast`, {}, { headers: authHeaders });
       addToast('Request re-broadcasted for new volunteers.', 'info');
       fetchRequests();
     } catch (err) {
       addToast('Failed to re-broadcast.', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -317,19 +366,25 @@ export default function NGOLogin() {
   const confirmDeleteRequest = async () => {
     if (!pendingDeleteRequestId) return;
     try {
+      setPendingAction(`delete-request-${pendingDeleteRequestId}`);
       await api.delete(`/ngo/requests/${pendingDeleteRequestId}`, { headers: authHeaders });
       addToast('Request deleted successfully.', 'success');
       setPendingDeleteRequestId(null);
       fetchRequests();
     } catch (err) {
       addToast('Failed to delete request.', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
   if (checkingAuth) {
     return (
       <div className="h-full w-full bg-gradient-to-b from-slate-50 to-white flex items-center justify-center px-4 pb-16 md:pb-0">
-        <div className="text-sm text-slate-500 font-medium">Checking authentication...</div>
+        <div className="flex flex-col items-center space-y-3 text-slate-500">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <div className="text-sm font-medium">Checking authentication...</div>
+        </div>
       </div>
     );
   }
@@ -376,8 +431,9 @@ export default function NGOLogin() {
               />
             </div>
 
-            <button type="submit" className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary text-white font-bold rounded-xl shadow-md transition-all active:scale-95">
-              Authenticate
+            <button type="submit" disabled={isLoggingIn} className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-75 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-md transition-all active:scale-95 inline-flex items-center justify-center space-x-2">
+              {isLoggingIn ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              <span>{isLoggingIn ? 'Authenticating...' : 'Authenticate'}</span>
             </button>
           </form>
 
@@ -509,6 +565,18 @@ export default function NGOLogin() {
               </div>
 
               <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Volunteers Needed</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  className="w-full mt-1 p-3 bg-slate-50 rounded-xl text-sm border border-slate-100 focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                  value={formData.volunteers_needed}
+                  onChange={e => setFormData({...formData, volunteers_needed: Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10)))})}
+                />
+              </div>
+
+              <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Broadcast Location</label>
                 <PlacesAutocomplete
                   value={formData.location_text}
@@ -543,8 +611,9 @@ export default function NGOLogin() {
                 </div>
               </div>
               
-              <button type="submit" className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary text-white font-bold rounded-xl shadow-md transition-all active:scale-95">
-                Broadcast Request
+              <button type="submit" disabled={isSubmittingRequest} className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-75 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-md transition-all active:scale-95 inline-flex items-center justify-center space-x-2">
+                {isSubmittingRequest ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                <span>{isSubmittingRequest ? 'Broadcasting...' : 'Broadcast Request'}</span>
               </button>
             </form>
           </div>
@@ -566,13 +635,19 @@ export default function NGOLogin() {
             <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Active request operations</p>
           </div>
           <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-bold bg-slate-50 border border-slate-100 rounded-full px-2.5 py-1.5">
-            <Clock className="w-3 h-3" />
-            <span>Auto-refresh 5s</span>
+            {isFetchingRequests ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
+            <span>{isFetchingRequests ? 'Refreshing requests...' : 'Auto-refresh 5s'}</span>
           </div>
         </div>
         
         <div className="space-y-3 pb-4 md:overflow-y-auto md:custom-scrollbar md:pr-2 flex-1 min-h-0">
-          {requests.length === 0 && (
+          {isFetchingRequests && requests.length === 0 && (
+            <div className="text-center py-12 text-slate-400 flex flex-col items-center space-y-2">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <p className="text-sm font-medium">Loading requests...</p>
+            </div>
+          )}
+          {!isFetchingRequests && requests.length === 0 && (
             <div className="text-center py-12 text-slate-300">
               <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm font-medium">No active requests</p>
@@ -600,6 +675,11 @@ export default function NGOLogin() {
                     {req.urgency >= 4 && (
                       <span className="flex-shrink-0 w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span>
                     )}
+                    {req.urgency === 5 && req.last_escalated_at && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 animate-pulse">
+                        ⚠ Auto-escalated
+                      </span>
+                    )}
                   </div>
                   <p className="text-slate-600 text-xs mt-0.5 leading-relaxed line-clamp-2">{req.task_description}</p>
                   {req.location_text && (
@@ -613,9 +693,30 @@ export default function NGOLogin() {
                       <span key={a} className="text-[9px] font-bold text-amber-500 bg-amber-50 border border-amber-100 px-2 py-1 rounded-full">{a}</span>
                     ))}
                   </div>
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 mb-1">
+                      <span>{(req.volunteers_matched || 0)} / {(req.volunteers_needed || 1)} volunteers confirmed</span>
+                      {req.status === 'filled' ? (
+                        <span className="text-emerald-600">Filled</span>
+                      ) : (
+                        <span className="text-slate-400">Open</span>
+                      )}
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-primary to-secondary transition-all"
+                        style={{ width: `${Math.min(100, ((req.volunteers_matched || 0) / Math.max(1, req.volunteers_needed || 1)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="flex-shrink-0 ml-3">
-                  {isCompleted ? (
+                  {req.status === 'filled' ? (
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-full border border-indigo-100 shadow-sm">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Filled</span>
+                    </span>
+                  ) : isCompleted ? (
                     <span className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-green-50 text-green-600 text-[10px] font-bold rounded-full border border-green-100 shadow-sm">
                       <CheckCircle2 className="w-3 h-3" />
                       <span>Completed</span>
@@ -679,7 +780,7 @@ export default function NGOLogin() {
                     </div>
                   </div>
 
-                  {!matchInfo?.live && (
+                  {!live && (
                     <div className="flex items-center space-x-1.5 px-2.5 py-2 bg-white rounded-xl border border-slate-100">
                       <Clock className="w-3 h-3 text-slate-400 animate-pulse" />
                       <span className="text-[10px] font-bold text-slate-500">Live tracker reconnecting...</span>
@@ -709,10 +810,10 @@ export default function NGOLogin() {
                     <button
                       onClick={() => matchInfo?.id && handleRebroadcast(matchInfo.id)}
                       disabled={!matchInfo?.id}
-                      className="flex items-center space-x-1 px-2.5 py-1.5 bg-rose-500 text-white text-[10px] font-bold rounded-lg hover:bg-rose-600 transition-colors disabled:opacity-60"
+                      className="flex items-center space-x-1 px-2.5 py-1.5 bg-rose-500 text-white text-[10px] font-bold rounded-lg hover:bg-rose-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Re-broadcast</span>
+                      {pendingAction === `rebroadcast-${matchInfo?.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                      <span>{pendingAction === `rebroadcast-${matchInfo?.id}` ? 'Re-broadcasting...' : 'Re-broadcast'}</span>
                     </button>
                   </div>
 
@@ -722,19 +823,59 @@ export default function NGOLogin() {
                       <button
                         onClick={() => matchInfo?.id && handleNgoConfirm(matchInfo.id)}
                         disabled={!matchInfo?.id}
-                        className="flex-1 py-2 bg-green-500 text-white text-[11px] font-bold rounded-lg flex items-center justify-center space-x-1 hover:bg-green-600 transition-colors active:scale-95"
+                        className="flex-1 py-2 bg-green-500 text-white text-[11px] font-bold rounded-lg flex items-center justify-center space-x-1 hover:bg-green-600 transition-colors active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed"
                       >
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Confirm Done</span>
+                        {pendingAction === `confirm-${matchInfo?.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                        <span>{pendingAction === `confirm-${matchInfo?.id}` ? 'Confirming...' : 'Confirm Done'}</span>
                       </button>
                       <button
                         onClick={() => matchInfo?.id && handleNgoDispute(matchInfo.id)}
                         disabled={!matchInfo?.id}
-                        className="flex-1 py-2 bg-white text-rose-500 text-[11px] font-bold rounded-lg flex items-center justify-center space-x-1 border border-rose-200 hover:bg-rose-50 transition-colors active:scale-95"
+                        className="flex-1 py-2 bg-white text-rose-500 text-[11px] font-bold rounded-lg flex items-center justify-center space-x-1 border border-rose-200 hover:bg-rose-50 transition-colors active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed"
                       >
-                        <XCircle className="w-3 h-3" />
-                        <span>Dispute</span>
+                        {pendingAction === `dispute-${matchInfo?.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                        <span>{pendingAction === `dispute-${matchInfo?.id}` ? 'Disputing...' : 'Dispute'}</span>
                       </button>
+                    </div>
+                  )}
+
+                  {isPending && etaFeedbackMatchId === matchInfo?.id && (
+                    <div className="mt-2 p-3 rounded-xl bg-white border border-slate-100 space-y-2">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Did the volunteer arrive within the estimated time?</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(ETA_FEEDBACK_OPTIONS).map(([key, option]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setEtaFeedbackChoice(key)}
+                            className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-colors ${
+                              etaFeedbackChoice === key
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center space-x-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => submitEtaFeedbackAndConfirm(matchInfo, live)}
+                          disabled={pendingAction === `confirm-${matchInfo?.id}`}
+                          className="flex-1 py-2 bg-green-600 text-white text-[11px] font-bold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-75 disabled:cursor-not-allowed inline-flex items-center justify-center space-x-2"
+                        >
+                          {pendingAction === `confirm-${matchInfo?.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                          <span>{pendingAction === `confirm-${matchInfo?.id}` ? 'Saving...' : 'Save feedback & confirm'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEtaFeedbackMatchId(null)}
+                          className="px-3 py-2 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -801,9 +942,11 @@ export default function NGOLogin() {
               <button
                 type="button"
                 onClick={confirmDeleteRequest}
-                className="px-3 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700"
+                disabled={pendingAction === `delete-request-${pendingDeleteRequestId}`}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-75 disabled:cursor-not-allowed inline-flex items-center space-x-2"
               >
-                Yes, Delete
+                {pendingAction === `delete-request-${pendingDeleteRequestId}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                <span>{pendingAction === `delete-request-${pendingDeleteRequestId}` ? 'Deleting...' : 'Yes, Delete'}</span>
               </button>
             </div>
           </div>

@@ -8,6 +8,9 @@ Falls back to haversine-based estimate when the API key is missing or the call f
 import math
 import os
 import requests
+from sqlalchemy.orm import Session
+
+from app.models import Match
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
@@ -33,6 +36,35 @@ def _haversine_fallback(lat1: float, lon1: float, lat2: float, lon2: float) -> d
         "duration_text": f"{est_minutes} mins",
         "source": "estimate",
     }
+
+
+def get_eta_calibration_factor(db: Session) -> float:
+    """Average ratio of actual arrival minutes to estimated ETA over the last 50 feedback samples."""
+    feedback_matches = (
+        db.query(Match)
+        .filter(
+            Match.status == "completed",
+            Match.eta_feedback_given == True,
+            Match.actual_arrival_minutes.isnot(None),
+            Match.eta_minutes.isnot(None),
+            Match.eta_minutes > 0,
+        )
+        .order_by(Match.id.desc())
+        .limit(50)
+        .all()
+    )
+
+    ratios = []
+    for match in feedback_matches:
+        actual = float(match.actual_arrival_minutes or 0)
+        eta = float(match.eta_minutes or 0)
+        if actual > 0 and eta > 0:
+                        ratios.append(actual / eta)
+
+    if not ratios:
+        return 1.0
+
+    return max(0.5, min(2.5, sum(ratios) / len(ratios)))
 
 
 def get_driving_eta(

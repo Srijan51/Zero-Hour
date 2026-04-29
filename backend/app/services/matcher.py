@@ -1,5 +1,6 @@
 import math
 import re
+import unicodedata
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371.0
@@ -65,6 +66,20 @@ ALIASES = {
     "technical": "technical",
     "tools": "tools",
     "carriers": "carriers",
+    # Bengali aliases / transliterations
+    "গাড়ি": "vehicle",
+    "গাড়ি": "vehicle",
+    "gari": "vehicle",
+    "গাড়ী": "vehicle",
+    "নৌকা": "boat",
+    "নৌকো": "boat",
+    "নৈকা": "boat",
+    "nauka": "boat",
+    "nouka": "boat",
+    "সাঁতার": "swimming",
+    "সাঁতারু": "swimming",
+    "সাংতার": "swimming",
+    "saatar": "swimming",
 }
 
 # Multi-word alias phrases to check before single-word tokenization
@@ -81,7 +96,8 @@ def _expand_to_canonical_tokens(value):
     """Convert a skill/asset string into a set of canonical tokens."""
     if not value:
         return set()
-    text = re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
+    text = unicodedata.normalize("NFKC", str(value).lower())
+    text = re.sub(r"[^0-9a-z\u0980-\u09ff]+", " ", text).strip()
     text = re.sub(r"\s+", " ", text)
     if not text:
         return set()

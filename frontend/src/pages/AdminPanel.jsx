@@ -23,6 +23,8 @@ export default function AdminPanel() {
   const [ngos, setNgos] = useState([]);
   const [pendingDeleteNgo, setPendingDeleteNgo] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isFetchingData, setIsFetchingData] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
 
   const [newNgo, setNewNgo] = useState({
     ngo_name: '',
@@ -68,8 +70,9 @@ export default function AdminPanel() {
     [adminToken]
   );
 
-  const fetchData = async () => {
+  const fetchData = async ({ silent = false } = {}) => {
     if (!adminToken) return;
+    if (!silent) setIsFetchingData(true);
     try {
       const [regRes, ngoRes] = await Promise.all([
         api.get('/admin/registrations?status=pending', { headers: authHeaders }),
@@ -82,6 +85,8 @@ export default function AdminPanel() {
         handleLogout();
         showToast('Session expired. Please login again.', 'error');
       }
+    } finally {
+      if (!silent) setIsFetchingData(false);
     }
   };
 
@@ -127,30 +132,38 @@ export default function AdminPanel() {
     setAdminName('');
     setRegistrations([]);
     setNgos([]);
+    setIsFetchingData(false);
   };
 
   const approveRegistration = async (registrationId) => {
+    setPendingAction(`approve-${registrationId}`);
     try {
       await api.post(`/admin/registrations/${registrationId}/approve`, {}, { headers: authHeaders });
       showToast('Registration approved and NGO account created.', 'success');
       fetchData();
     } catch (err) {
       showToast(err?.response?.data?.detail || 'Failed to approve registration', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const rejectRegistration = async (registrationId) => {
+    setPendingAction(`reject-${registrationId}`);
     try {
       await api.post(`/admin/registrations/${registrationId}/reject`, {}, { headers: authHeaders });
       showToast('Registration rejected.', 'success');
       fetchData();
     } catch (err) {
       showToast(err?.response?.data?.detail || 'Failed to reject registration', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const createNgoDirectly = async (e) => {
     e.preventDefault();
+    setPendingAction('create-ngo');
 
     try {
       await api.post('/admin/ngos', newNgo, { headers: authHeaders });
@@ -159,11 +172,14 @@ export default function AdminPanel() {
       fetchData();
     } catch (err) {
       showToast(err?.response?.data?.detail || 'Failed to create NGO', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const confirmDeleteNgo = async () => {
     if (!pendingDeleteNgo?.id) return;
+    setPendingAction(`delete-ngo-${pendingDeleteNgo.id}`);
     try {
       await api.delete(`/admin/ngos/${pendingDeleteNgo.id}`, { headers: authHeaders });
       showToast('NGO account deleted.', 'success');
@@ -171,6 +187,8 @@ export default function AdminPanel() {
       fetchData();
     } catch (err) {
       showToast(err?.response?.data?.detail || 'Failed to delete NGO', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -205,6 +223,7 @@ export default function AdminPanel() {
   };
 
   const saveNgoEdit = async (ngoId) => {
+    setPendingAction(`save-ngo-${ngoId}`);
     try {
       const payload = {
         ngo_name: editNgo.ngo_name,
@@ -227,6 +246,8 @@ export default function AdminPanel() {
       fetchData();
     } catch (err) {
       showToast(err?.response?.data?.detail || 'Failed to update NGO', 'error');
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -319,7 +340,7 @@ export default function AdminPanel() {
               onClick={() => navigate('/admin/requests')}
               className="inline-flex items-center space-x-1 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
             >
-              <History className="w-4 h-4" />
+              {isFetchingData ? <Loader2 className="w-4 h-4 animate-spin" /> : <History className="w-4 h-4" />}
               <span>Request History</span>
             </button>
             <button onClick={handleLogout} className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:text-slate-900 hover:border-slate-300">
@@ -330,9 +351,18 @@ export default function AdminPanel() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-            <h2 className="text-sm font-bold text-slate-700 mb-3">Pending NGO Registrations</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-slate-700">Pending NGO Registrations</h2>
+              {isFetchingData && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+            </div>
             <div className="space-y-3 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
-              {registrations.length === 0 && <p className="text-xs text-slate-400">No pending registrations.</p>}
+              {isFetchingData && registrations.length === 0 && (
+                <div className="py-8 text-center text-slate-400 flex flex-col items-center space-y-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <p className="text-xs font-medium">Loading pending registrations...</p>
+                </div>
+              )}
+              {!isFetchingData && registrations.length === 0 && <p className="text-xs text-slate-400">No pending registrations.</p>}
               {registrations.map(reg => (
                 <div key={reg.id} className="p-3 border border-slate-100 rounded-xl">
                   <p className="text-sm font-bold text-slate-800">{reg.ngo_name}</p>
@@ -341,13 +371,13 @@ export default function AdminPanel() {
                   <p className="text-xs text-slate-500">12A: {reg.certificate_12a_number || 'Not provided'}</p>
                   <p className="text-xs text-slate-500 mt-1">{reg.description || 'No description'}</p>
                   <div className="mt-2 flex items-center space-x-2">
-                    <button onClick={() => approveRegistration(reg.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Approve</span>
+                    <button onClick={() => approveRegistration(reg.id)} disabled={pendingAction === `approve-${reg.id}`} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100 disabled:opacity-75 disabled:cursor-not-allowed">
+                      {pendingAction === `approve-${reg.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                      <span>{pendingAction === `approve-${reg.id}` ? 'Approving...' : 'Approve'}</span>
                     </button>
-                    <button onClick={() => rejectRegistration(reg.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold border border-rose-100">
-                      <XCircle className="w-3 h-3" />
-                      <span>Reject</span>
+                    <button onClick={() => rejectRegistration(reg.id)} disabled={pendingAction === `reject-${reg.id}`} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold border border-rose-100 disabled:opacity-75 disabled:cursor-not-allowed">
+                      {pendingAction === `reject-${reg.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                      <span>{pendingAction === `reject-${reg.id}` ? 'Rejecting...' : 'Reject'}</span>
                     </button>
                   </div>
                 </div>
@@ -366,17 +396,26 @@ export default function AdminPanel() {
               <input required type="text" placeholder="12A Certificate Number" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.certificate_12a_number} onChange={e => setNewNgo({ ...newNgo, certificate_12a_number: e.target.value })} />
               <textarea placeholder="Description" rows="2" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.description} onChange={e => setNewNgo({ ...newNgo, description: e.target.value })} />
               <input required type="password" placeholder="Password" className="w-full p-2.5 bg-slate-50 rounded-lg text-sm border border-slate-100" value={newNgo.password} onChange={e => setNewNgo({ ...newNgo, password: e.target.value })} />
-              <button type="submit" className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-bold inline-flex items-center justify-center space-x-1">
-                <UserPlus className="w-4 h-4" />
-                <span>Create NGO</span>
+              <button type="submit" disabled={pendingAction === 'create-ngo'} className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-bold inline-flex items-center justify-center space-x-1 disabled:opacity-75 disabled:cursor-not-allowed">
+                {pendingAction === 'create-ngo' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                <span>{pendingAction === 'create-ngo' ? 'Creating...' : 'Create NGO'}</span>
               </button>
             </form>
           </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-          <h2 className="text-sm font-bold text-slate-700 mb-3">Registered NGOs</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-slate-700">Registered NGOs</h2>
+              {isFetchingData && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+            </div>
           <div className="space-y-2">
+              {isFetchingData && ngos.length === 0 && (
+                <div className="py-8 text-center text-slate-400 flex flex-col items-center space-y-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <p className="text-xs font-medium">Loading registered NGOs...</p>
+                </div>
+              )}
             {ngos.map(ngo => (
               <div key={ngo.id} className="p-3 border border-slate-100 rounded-xl">
                 {editingNgoId === ngo.id ? (
@@ -394,9 +433,9 @@ export default function AdminPanel() {
                       <span>Active account</span>
                     </label>
                     <div className="flex items-center space-x-2">
-                      <button onClick={() => saveNgoEdit(ngo.id)} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100">
-                        <Save className="w-3 h-3" />
-                        <span>Save</span>
+                      <button onClick={() => saveNgoEdit(ngo.id)} disabled={pendingAction === `save-ngo-${ngo.id}`} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100 disabled:opacity-75 disabled:cursor-not-allowed">
+                        {pendingAction === `save-ngo-${ngo.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        <span>{pendingAction === `save-ngo-${ngo.id}` ? 'Saving...' : 'Save'}</span>
                       </button>
                       <button onClick={cancelEditNgo} className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
                         <X className="w-3 h-3" />
@@ -462,9 +501,11 @@ export default function AdminPanel() {
               <button
                 type="button"
                 onClick={confirmDeleteNgo}
-                className="px-3 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700"
+                disabled={pendingAction === `delete-ngo-${pendingDeleteNgo.id}`}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-75 disabled:cursor-not-allowed inline-flex items-center space-x-2"
               >
-                Yes, Delete
+                {pendingAction === `delete-ngo-${pendingDeleteNgo.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                <span>{pendingAction === `delete-ngo-${pendingDeleteNgo.id}` ? 'Deleting...' : 'Yes, Delete'}</span>
               </button>
             </div>
           </div>

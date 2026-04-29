@@ -32,6 +32,10 @@ class NGORequestBase(BaseModel):
     lng: float
     urgency: int = 3
     status: str = "open"
+    volunteers_needed: int = 1
+    volunteers_matched: int = 0
+    last_escalated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
 class NGORequestCreate(BaseModel):
     task_description: str
@@ -43,6 +47,7 @@ class NGORequestCreate(BaseModel):
     lng: float
     urgency: int = 3
     status: str = "open"
+    volunteers_needed: int = 1
 
 class NGORequestResponse(NGORequestBase):
     id: int
@@ -162,6 +167,11 @@ class CheckinRequest(BaseModel):
     lat: float
     lng: float
 
+
+class EtaFeedbackRequest(BaseModel):
+    on_time: bool
+    actual_minutes: Optional[int] = None
+
 class MatchResponse(BaseModel):
     id: int
     volunteer_id: int
@@ -176,6 +186,8 @@ class MatchResponse(BaseModel):
     no_show_flagged: bool = False
     arrived_at: Optional[datetime] = None
     delay_notified_at: Optional[datetime] = None
+    actual_arrival_minutes: Optional[int] = None
+    eta_feedback_given: bool = False
     request: Optional[NGORequestResponse] = None
     volunteer_phone: Optional[str] = None
     volunteer_name: Optional[str] = None
@@ -197,6 +209,8 @@ class MatchLiveResponse(BaseModel):
     volunteer_lng: Optional[float] = None
     no_show_flagged: bool = False
     delay_notified_at: Optional[datetime] = None
+    actual_arrival_minutes: Optional[int] = None
+    eta_feedback_given: bool = False
     arrived: bool = False
     volunteer_phone: Optional[str] = None
     volunteer_name: Optional[str] = None

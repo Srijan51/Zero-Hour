@@ -1,5 +1,7 @@
 import os
 import secrets
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
 from typing import Dict, List, Optional
 
@@ -7,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AdminAccount, Match, NGOAccount, NGORegistration, NGORequest
+from app.models import AdminAccount, Match, NGOAccount, NGORegistration, NGORequest, Volunteer
 from app.schemas import (
     AdminNGORequestResponse,
     AdminNGORequestUpdate,
@@ -19,6 +21,8 @@ from app.schemas import (
     NGORegistrationResponse,
 )
 from app.services.auth import hash_password, verify_password
+from app.services.google_maps import get_eta_calibration_factor
+from app.services.matcher import _expand_to_canonical_tokens, _is_semantic_match
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -313,3 +317,149 @@ def delete_request_by_admin(
     db.commit()
 
     return {"message": "Request deleted", "request_id": request_id}
+
+
+@router.get("/eta-stats")
+def eta_stats(
+    db: Session = Depends(get_db),
+    admin: AdminAccount = Depends(_get_authenticated_admin),
+):
+    feedback_matches = (
+        db.query(Match)
+        .filter(
+            Match.status == "completed",
+            Match.eta_feedback_given == True,
+            Match.actual_arrival_minutes.isnot(None),
+            Match.eta_minutes.isnot(None),
+            Match.eta_minutes > 0,
+        )
+        .order_by(Match.id.desc())
+        .limit(50)
+        .all()
+    )
+
+    sample_size = len(feedback_matches)
+    if sample_size:
+        ratios = [float(m.actual_arrival_minutes or 0) / float(m.eta_minutes or 1) for m in feedback_matches if (m.actual_arrival_minutes or 0) > 0 and (m.eta_minutes or 0) > 0]
+        avg_ratio = sum(ratios) / len(ratios) if ratios else 1.0
+    else:
+        avg_ratio = 1.0
+
+    return {
+        "average_accuracy": round(avg_ratio, 3),
+        "sample_size": sample_size,
+        "calibration_factor": round(get_eta_calibration_factor(db), 3),
+    }
+
+
+@router.get("/analytics")
+def admin_analytics(
+    db: Session = Depends(get_db),
+    admin: AdminAccount = Depends(_get_authenticated_admin),
+):
+    completed_matches = (
+        db.query(Match)
+        .filter(Match.status == "completed")
+        .order_by(Match.id.asc())
+        .all()
+    )
+    completed_requests = (
+        db.query(NGORequest)
+        .filter(NGORequest.status == "completed")
+        .order_by(NGORequest.id.asc())
+        .all()
+    )
+
+    total_missions_completed = len(completed_matches)
+
+    response_times = []
+    arrival_times = []
+    missions_by_day_map = Counter()
+
+    for match in completed_matches:
+        req = match.request
+        if req and req.created_at and match.created_at:
+            created = req.created_at
+            matched = match.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            else:
+                created = created.astimezone(timezone.utc)
+            if matched.tzinfo is None:
+                matched = matched.replace(tzinfo=timezone.utc)
+            else:
+                matched = matched.astimezone(timezone.utc)
+            response_times.append(max(0.0, (matched - created).total_seconds() / 60.0))
+
+        if match.arrived_at and match.created_at:
+            created = match.created_at
+            arrived = match.arrived_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            else:
+                created = created.astimezone(timezone.utc)
+            if arrived.tzinfo is None:
+                arrived = arrived.replace(tzinfo=timezone.utc)
+            else:
+                arrived = arrived.astimezone(timezone.utc)
+            arrival_times.append(max(0.0, (arrived - created).total_seconds() / 60.0))
+
+        if match.updated_at:
+            day = match.updated_at.astimezone(timezone.utc).date() if match.updated_at.tzinfo else match.updated_at.date()
+            missions_by_day_map[day.isoformat()] += 1
+
+    avg_response_time_minutes = round(sum(response_times) / len(response_times), 2) if response_times else 0.0
+    avg_arrival_time_minutes = round(sum(arrival_times) / len(arrival_times), 2) if arrival_times else 0.0
+
+    urgency_distribution = {str(i): 0 for i in range(1, 6)}
+    for req in db.query(NGORequest).all():
+        key = str(max(1, min(5, int(req.urgency or 3))))
+        urgency_distribution[key] = urgency_distribution.get(key, 0) + 1
+
+    # Skill gaps: for completed requests, count required skills that none of the volunteers satisfy.
+    volunteers = db.query(Volunteer).all()
+    volunteer_skill_tokens = []
+    for volunteer in volunteers:
+        tokens = set()
+        for skill in (volunteer.skills or []):
+            tokens |= _expand_to_canonical_tokens(skill)
+        volunteer_skill_tokens.append(tokens)
+
+    skill_gap_counter = Counter()
+    for req in completed_requests:
+        for required_skill in (req.required_skills or []):
+            if not required_skill:
+                continue
+            if not any(_is_semantic_match(required_skill, skill) for volunteer in volunteers for skill in (volunteer.skills or [])):
+                skill_gap_counter[str(required_skill)] += 1
+
+    top_skill_gaps = [
+        {"skill": skill, "unmet_count": count}
+        for skill, count in skill_gap_counter.most_common(5)
+    ]
+
+    volunteer_completion_counts = Counter()
+    for match in completed_matches:
+        volunteer_completion_counts[match.volunteer_id] += 1
+
+    volunteers_with_completed = len(volunteer_completion_counts)
+    volunteers_repeat = sum(1 for count in volunteer_completion_counts.values() if count >= 2)
+    volunteer_repeat_rate = round((volunteers_repeat / volunteers_with_completed) * 100.0, 2) if volunteers_with_completed else 0.0
+
+    missions_by_day = [
+        {"date": day, "count": missions_by_day_map.get(day, 0)}
+        for day in [
+            (datetime.now(timezone.utc).date() - timedelta(days=delta)).isoformat()
+            for delta in range(13, -1, -1)
+        ]
+    ]
+
+    return {
+        "total_missions_completed": total_missions_completed,
+        "avg_response_time_minutes": avg_response_time_minutes,
+        "avg_arrival_time_minutes": avg_arrival_time_minutes,
+        "top_skill_gaps": top_skill_gaps,
+        "missions_by_day": missions_by_day,
+        "volunteer_repeat_rate": volunteer_repeat_rate,
+        "urgency_distribution": urgency_distribution,
+    }

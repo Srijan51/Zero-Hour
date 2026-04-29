@@ -32,6 +32,10 @@ class NGORequest(Base):
     lng = Column(Float)
     urgency = Column(Integer, default=3)
     status = Column(String, default="open") # open, matched, pending_confirmation, completed
+    volunteers_needed = Column(Integer, default=1)
+    volunteers_matched = Column(Integer, default=0)
+    last_escalated_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     matches = relationship("Match", back_populates="request")
 
@@ -51,6 +55,8 @@ class Match(Base):
     no_show_flagged = Column(Boolean, default=False)   # True when pings stopped for 5+ min
     arrived_at = Column(DateTime(timezone=True), nullable=True)    # When volunteer reached ~200m of target
     delay_notified_at = Column(DateTime(timezone=True), nullable=True)  # When volunteer tapped "I'm delayed"
+    actual_arrival_minutes = Column(Integer, nullable=True)
+    eta_feedback_given = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

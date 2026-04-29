@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
 import api from '../services/api';
 
 export default function RegisterNGO() {
@@ -16,11 +16,13 @@ export default function RegisterNGO() {
   });
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatus('Submitting registration...');
     setError('');
+    setIsSubmitting(true);
 
     try {
       await api.post('/ngo/register', formData);
@@ -42,6 +44,8 @@ export default function RegisterNGO() {
         : backendDetail;
       setStatus('');
       setError(message || 'Failed to submit registration');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -156,8 +160,9 @@ export default function RegisterNGO() {
               />
             </div>
 
-            <button type="submit" className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary text-white font-bold rounded-xl shadow-md transition-all active:scale-95">
-              Submit Registration
+            <button type="submit" disabled={isSubmitting} className="w-full py-3 mt-1 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-75 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-md transition-all active:scale-95 inline-flex items-center justify-center space-x-2">
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              <span>{isSubmitting ? 'Submitting...' : 'Submit Registration'}</span>
             </button>
           </form>
 

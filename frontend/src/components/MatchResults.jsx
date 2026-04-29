@@ -5,6 +5,7 @@ import { Navigation, CheckCircle, MapPin, Phone, User, Clock, AlertTriangle, Loa
 const ACTIVE_MATCH_STORAGE_KEY = 'active_match_id';
 const ACTIVE_MISSION_STORAGE_KEY = 'active_mission';
 const ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY = 'active_volunteer_token';
+const LIVE_STATUS_POLL_MS = 2000;
 
 function getStoredActiveMission() {
   const rawMission = localStorage.getItem(ACTIVE_MISSION_STORAGE_KEY);
@@ -131,7 +132,7 @@ function getCurrentLocation() {
 }
 
 // ─── Phone Prompt Modal ────────────────────────────────────────
-function PhonePrompt({ onSubmit, onCancel }) {
+function PhonePrompt({ onSubmit, onCancel, isSubmitting }) {
   const savedPhone = localStorage.getItem('volunteer_phone') || '';
   const savedName = localStorage.getItem('volunteer_name') || '';
   const [phone, setPhone] = useState(savedPhone);
@@ -188,9 +189,11 @@ function PhonePrompt({ onSubmit, onCancel }) {
         </div>
         <button
           type="submit"
-          className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl shadow-[0_8px_20px_rgba(79,70,229,0.3)] transition-transform hover:-translate-y-0.5 active:scale-95"
+          disabled={isSubmitting}
+          className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl shadow-[0_8px_20px_rgba(79,70,229,0.3)] transition-transform hover:-translate-y-0.5 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed inline-flex items-center justify-center space-x-2"
         >
-          Confirm & Accept Mission
+          {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          <span>{isSubmitting ? 'Confirming...' : 'Confirm & Accept Mission'}</span>
         </button>
         <button
           type="button"
@@ -216,11 +219,13 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
   const [isCompleting, setIsCompleting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [delayNotified, setDelayNotified] = useState(false);
+  const [missionNotice, setMissionNotice] = useState('');
   const [cancelSecondsRemaining, setCancelSecondsRemaining] = useState(() => (
     getCancelSecondsRemaining(acceptedAtRef.current)
   ));
   const pingIntervalRef = useRef(null);
   const statusIntervalRef = useRef(null);
+  const lastStatusRef = useRef(matchData?.status || 'en_route');
   const volunteerToken = localStorage.getItem(ACTIVE_VOLUNTEER_TOKEN_STORAGE_KEY) || '';
   const volunteerHeaders = volunteerToken ? { 'X-Volunteer-Token': volunteerToken } : {};
   if (liveStatus?.created_at && !getAcceptedAt(matchData)) {
@@ -263,12 +268,20 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
     };
 
     fetchStatus();
-    statusIntervalRef.current = setInterval(fetchStatus, 5000);
+    statusIntervalRef.current = setInterval(fetchStatus, LIVE_STATUS_POLL_MS);
 
     return () => {
       if (statusIntervalRef.current) clearInterval(statusIntervalRef.current);
     };
   }, [matchId, volunteerToken]);
+
+  useEffect(() => {
+    const currentStatus = liveStatus?.status || matchData?.status || 'en_route';
+    if (lastStatusRef.current !== currentStatus && currentStatus === 'cancelled') {
+      setMissionNotice('The NGO closed this mission or rebroadcast it for another volunteer. Return home.');
+    }
+    lastStatusRef.current = currentStatus;
+  }, [liveStatus?.status, matchData?.status]);
 
   useEffect(() => {
     const alreadyDelayed = Boolean(liveStatus?.delay_notified_at || matchData?.delay_notified_at);
@@ -349,8 +362,11 @@ function LiveTrackingPanel({ matchId, matchData, routeUrl, onReset, onMissionFin
           <XCircle className="w-10 h-10 drop-shadow-sm" />
           <div>
             <h2 className="text-xl font-extrabold tracking-tight text-slate-800">Mission Cancelled</h2>
-            <p className="text-xs text-slate-400">This request is available for other volunteers again.</p>
+            <p className="text-xs text-slate-400">This request has been reopened for other volunteers.</p>
           </div>
+        </div>
+        <div className="p-4 rounded-xl border border-rose-100 bg-rose-50 text-rose-700 text-sm font-medium">
+          {missionNotice || 'The NGO cancelled or rebroadcast this mission. You can safely return home.'}
         </div>
         <button
           className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl shadow-md active:scale-95 transition-all"
@@ -536,6 +552,8 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
   const [showPhonePrompt, setShowPhonePrompt] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [isRestoringMission, setIsRestoringMission] = useState(false);
+  const [isAcceptingMission, setIsAcceptingMission] = useState(false);
+  const hasStoredMission = Boolean(getStoredActiveMission());
 
   const clearActiveMission = () => {
     localStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
@@ -574,18 +592,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
         const res = await api.get(`/match/${storedMission.match_id}/live`, { headers });
         const live = res.data;
 
-        let restoredScore = storedMission.score != null ? storedMission.score : null;
-        if (restoredScore == null && live.request?.id) {
-          try {
-            const volunteerMatchesRes = await api.get(`/match/volunteer/${storedMission.volunteer_id}`, { headers });
-            const exactMatch = (volunteerMatchesRes.data || []).find((m) => Number(m.id) === Number(live.id));
-            if (exactMatch && Number.isFinite(Number(exactMatch.score))) {
-              restoredScore = Number(exactMatch.score);
-            }
-          } catch {
-            // Keep fallback score when request-level lookup fails.
-          }
-        }
+        const restoredScore = storedMission.score != null ? storedMission.score : null;
 
         if (live.status === 'cancelled' || live.status === 'completed') {
           clearMissionAndResetPanel();
@@ -618,12 +625,14 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
   }, [confirmedMatch, volunteerId, onReset]);
 
   const handleAcceptClick = (requestId) => {
+    if (isRestoringMission) return;
     // Always show the identity panel; it can be prefilled from localStorage.
     setSelectedRequestId(requestId);
     setShowPhonePrompt(true);
   };
 
   const confirmMatch = async (requestId, phone, name) => {
+    setIsAcceptingMission(true);
     try {
       const res = await api.post('/match/confirm', {
         volunteer_id: volunteerId,
@@ -652,6 +661,8 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
       // Add an alert to show exactly what the backend is complaining about:
       const errorMessage = error.response?.data?.detail || error.message || "Failed to connect to backend";
       alert("Mission Accept Error: " + errorMessage);
+    } finally {
+      setIsAcceptingMission(false);
     }
   };
 
@@ -660,6 +671,7 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
     return (
       <PhonePrompt
         onSubmit={({ phone, name }) => confirmMatch(selectedRequestId, phone, name)}
+        isSubmitting={isAcceptingMission}
         onCancel={() => {
           setShowPhonePrompt(false);
           setSelectedRequestId(null);
@@ -684,8 +696,8 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
     );
   }
 
-  const hasStoredMission = Boolean(getStoredActiveMission());
-  if (isRestoringMission && hasStoredMission && (!matches || matches.length === 0)) {
+  const showRestoreBanner = isRestoringMission && hasStoredMission;
+  if (showRestoreBanner && (!matches || matches.length === 0)) {
     return (
       <div className="p-8 glass-panel rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col items-center justify-center min-h-[240px] slide-up">
         <Loader2 className="w-7 h-7 text-primary animate-spin mb-3" />
@@ -696,7 +708,13 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
 
   // Match list
   return (
-    <div className="p-6 glass-panel rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col max-h-[65vh] overflow-hidden">
+    <div className="p-6 glass-panel rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col max-h-[65vh] overflow-hidden relative">
+      {showRestoreBanner && (
+        <div className="absolute top-4 right-4 z-20 inline-flex items-center space-x-2 rounded-full border border-primary/10 bg-white/90 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm backdrop-blur-sm">
+          <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+          <span>Restoring active mission...</span>
+        </div>
+      )}
       <div className="w-12 h-1.5 bg-slate-300/50 rounded-full mx-auto mb-5"></div>
       <h2 className="text-2xl font-extrabold text-slate-800 mb-4 px-2 tracking-tight">Top NGO Matches</h2>
       
@@ -732,7 +750,8 @@ export default function MatchResults({ matches, volunteerId, currentLat, current
             
             <button 
               onClick={() => handleAcceptClick(match.id)}
-              className="mt-3 w-full py-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary transition-all text-white rounded-xl text-sm font-bold shadow-[0_4px_14px_rgba(0,0,0,0.15)] active:scale-95"
+              disabled={isRestoringMission}
+              className="mt-3 w-full py-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-primary hover:to-secondary disabled:opacity-70 disabled:cursor-wait transition-all text-white rounded-xl text-sm font-bold shadow-[0_4px_14px_rgba(0,0,0,0.15)] active:scale-95"
             >
               Accept Mission
             </button>

@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Match, NGOAccount, NGORequest, Volunteer
-from app.schemas import CheckinRequest, MatchConfirm, MatchLiveResponse, MatchResponse
+from app.schemas import CheckinRequest, EtaFeedbackRequest, MatchConfirm, MatchLiveResponse, MatchResponse
 from app.services.matcher import compute_score, haversine
-from app.services.google_maps import get_driving_eta
+from app.services.google_maps import get_driving_eta, get_eta_calibration_factor
 from typing import List
 
 router = APIRouter(prefix="/match", tags=["Match"])
@@ -56,6 +56,20 @@ def _ensure_ngo_owns_request(ngo: NGOAccount, request: NGORequest) -> None:
 def _ensure_volunteer_owns_match(volunteer_id: int, match: Match) -> None:
     if match.volunteer_id != volunteer_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage your own mission")
+
+
+def _refresh_request_capacity_state(db: Session, request_id: int) -> None:
+    req = db.query(NGORequest).filter(NGORequest.id == request_id).first()
+    if not req:
+        return
+
+    active_match_count = db.query(Match).filter(
+        Match.request_id == request_id,
+        Match.status != "cancelled",
+    ).count()
+    req.volunteers_matched = active_match_count
+    volunteers_needed = max(1, int(req.volunteers_needed or 1))
+    req.status = "filled" if active_match_count >= volunteers_needed else "open"
 
 
 def _check_no_show(match: Match) -> bool:
@@ -161,6 +175,11 @@ def confirm_match(
         req.lat,
         req.lng,
     )
+    if eta_result.get("source") == "estimate":
+        calibration_factor = get_eta_calibration_factor(db)
+        adjusted_minutes = max(1, int(round(eta_result["duration_minutes"] * calibration_factor)))
+        eta_result["duration_minutes"] = adjusted_minutes
+        eta_result["duration_text"] = f"{adjusted_minutes} mins"
 
     now = datetime.now(timezone.utc)
     new_match = Match(
@@ -173,7 +192,9 @@ def confirm_match(
         created_at=now,
         updated_at=now,
     )
-    req.status = "matched"
+    req.volunteers_matched = (req.volunteers_matched or 0) + 1
+    volunteers_needed = max(1, int(req.volunteers_needed or 1))
+    req.status = "filled" if req.volunteers_matched >= volunteers_needed else "open"
     
     db.add(new_match)
     db.commit()
@@ -189,6 +210,38 @@ def confirm_match(
     response.volunteer_phone = vol.phone
     response.volunteer_name = vol.name
     return response
+
+
+@router.post("/{match_id}/eta-feedback")
+def eta_feedback(
+    match_id: int,
+    payload: EtaFeedbackRequest,
+    db: Session = Depends(get_db),
+    ngo: NGOAccount = Depends(_get_authenticated_ngo),
+):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    _ensure_ngo_owns_request(ngo, req)
+
+    if payload.actual_minutes is not None:
+        match.actual_arrival_minutes = max(0, int(payload.actual_minutes))
+    else:
+        match.actual_arrival_minutes = None
+    match.eta_feedback_given = True
+    db.commit()
+    db.refresh(match)
+
+    return {
+        "ok": True,
+        "match_id": match.id,
+        "eta_feedback_given": match.eta_feedback_given,
+        "actual_arrival_minutes": match.actual_arrival_minutes,
+    }
 
 
 @router.post("/{match_id}/checkin")
@@ -281,8 +334,8 @@ def volunteer_cancel(
 
     req = db.query(NGORequest).filter(NGORequest.id == match.request_id).first()
     match.status = "cancelled"
-    if req and req.status in ("matched", "pending_confirmation"):
-        req.status = "open"
+    if req:
+        _refresh_request_capacity_state(db, req.id)
 
     db.commit()
 
@@ -363,7 +416,7 @@ def ngo_dispute(
     _ensure_ngo_owns_request(ngo, req)
 
     match.status = "cancelled"
-    req.status = "open"
+    _refresh_request_capacity_state(db, req.id)
     db.commit()
 
     print(f"❌ NGO disputed match {match_id} — request re-opened")
@@ -387,7 +440,7 @@ def rebroadcast(
     _ensure_ngo_owns_request(ngo, req)
 
     match.status = "cancelled"
-    req.status = "open"
+    _refresh_request_capacity_state(db, req.id)
     db.commit()
 
     print(f"📡 Re-broadcast: match {match_id} cancelled, request re-opened")
