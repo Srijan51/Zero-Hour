@@ -182,11 +182,6 @@ def setup_default_admin():
         db.close()
 
 
-@app.on_event("startup")
-def setup_demo_seed_data():
-    from app.seed import seed_data
-
-    seed_data()
 
 
 @app.on_event("startup")
